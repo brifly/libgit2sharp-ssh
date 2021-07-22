@@ -110,7 +110,7 @@ namespace LibGit2Sharp.Tests
                 expectedFetchState.CheckUpdatedReferences(repo);
 
                 // Verify the reflog entries
-                Assert.Equal(1, repo.Refs.Log(string.Format("refs/remotes/{0}/master", remoteName)).Count()); // Branches are also retrieved
+                Assert.Single(repo.Refs.Log(string.Format("refs/remotes/{0}/master", remoteName))); // Branches are also retrieved
             }
         }
 
@@ -157,7 +157,7 @@ namespace LibGit2Sharp.Tests
 
                 // Verify the reflog entries
                 var reflogEntry = repo.Refs.Log(string.Format("refs/remotes/{0}/{1}", remoteName, localBranchName)).Single();
-                Assert.True(reflogEntry.Message.StartsWith("fetch "));
+                Assert.StartsWith("fetch ", reflogEntry.Message);
             }
         }
 
@@ -207,7 +207,7 @@ namespace LibGit2Sharp.Tests
         public void FetchHonorsTheFetchPruneConfigurationEntry()
         {
             var source = SandboxBareTestRepo();
-            var url = new Uri(Path.GetFullPath(source)).AbsoluteUri;
+            var url = new Uri($"file://{Path.GetFullPath(source)}").AbsoluteUri;
 
             var scd = BuildSelfCleaningDirectory();
 
@@ -239,5 +239,57 @@ namespace LibGit2Sharp.Tests
                 Assert.Equal(4, clonedRepo.Branches.Count(b => b.IsRemote));
             }
         }
+
+        [Fact]
+        public void CannotFetchWithForbiddenCustomHeaders()
+        {
+            var scd = BuildSelfCleaningDirectory();
+
+            const string url = "https://github.com/libgit2/TestGitRepository";
+
+            string clonedRepoPath = Repository.Clone(url, scd.DirectoryPath);
+
+            const string knownHeader = "User-Agent: mygit-201";
+            var options = new FetchOptions { CustomHeaders = new String[] { knownHeader } };
+            using (var repo = new Repository(clonedRepoPath))
+            {
+                Assert.Throws<LibGit2SharpException>(() => Commands.Fetch(repo, "origin", new string[0], options, null));
+            }
+        }
+
+        [Fact]
+        public void CanFetchWithCustomHeaders()
+        {
+            var scd = BuildSelfCleaningDirectory();
+
+            const string url = "https://github.com/libgit2/TestGitRepository";
+
+            string clonedRepoPath = Repository.Clone(url, scd.DirectoryPath);
+
+            const string knownHeader = "X-Hello: mygit-201";
+            var options = new FetchOptions { CustomHeaders = new String[] { knownHeader } };
+            using (var repo = new Repository(clonedRepoPath))
+            {
+                Commands.Fetch(repo, "origin", new string[0], options, null);
+            }
+        }
+
+        [Fact]
+        public void CannotFetchWithMalformedCustomHeaders()
+        {
+            var scd = BuildSelfCleaningDirectory();
+
+            const string url = "https://github.com/libgit2/TestGitRepository";
+
+            string clonedRepoPath = Repository.Clone(url, scd.DirectoryPath);
+
+            const string knownHeader = "Hello world";
+            var options = new FetchOptions { CustomHeaders = new String[] { knownHeader } };
+            using (var repo = new Repository(clonedRepoPath))
+            {
+                Assert.Throws<LibGit2SharpException>(() => Commands.Fetch(repo, "origin", new string[0], options, null));
+            }
+        }
+
     }
 }

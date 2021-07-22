@@ -10,7 +10,7 @@ namespace LibGit2Sharp.Tests
 {
     public class IndexFixture : BaseFixture
     {
-        private static readonly string subBranchFile = Path.Combine("1", "branch_file.txt");
+        private static readonly string subBranchFile = string.Join("/", "1", "branch_file.txt");
         private readonly string[] expectedEntries = new[]
                                                         {
                                                             "1.txt",
@@ -158,28 +158,34 @@ namespace LibGit2Sharp.Tests
         }
 
         [Theory]
-        [InlineData("README", FileStatus.Unaltered, new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt" })]
-        [InlineData("new_tracked_file.txt", FileStatus.NewInIndex, new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt" })]
-        [InlineData("modified_staged_file.txt", FileStatus.ModifiedInIndex, new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt" })]
-        [InlineData("modified_unstaged_file.txt", FileStatus.ModifiedInWorkdir, new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt" })]
-        public void MovingOverAnExistingFileThrows(string sourcePath, FileStatus sourceStatus, IEnumerable<string> destPaths)
+        [InlineData("README", FileStatus.Unaltered)]
+        [InlineData("new_tracked_file.txt", FileStatus.NewInIndex)]
+        [InlineData("modified_staged_file.txt", FileStatus.ModifiedInIndex)]
+        [InlineData("modified_unstaged_file.txt", FileStatus.ModifiedInWorkdir)]
+        public void MovingOverAnExistingFileThrows(string sourcePath, FileStatus sourceStatus)
         {
+            var destPaths = new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt" };
+
             InvalidMoveUseCases(sourcePath, sourceStatus, destPaths);
         }
 
         [Theory]
-        [InlineData("new_untracked_file.txt", FileStatus.NewInWorkdir, new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt", "deleted_unstaged_file.txt", "deleted_staged_file.txt", "i_dont_exist.txt" })]
-        public void MovingAFileWichIsNotUnderSourceControlThrows(string sourcePath, FileStatus sourceStatus, IEnumerable<string> destPaths)
+        [InlineData("new_untracked_file.txt", FileStatus.NewInWorkdir)]
+        public void MovingAFileWichIsNotUnderSourceControlThrows(string sourcePath, FileStatus sourceStatus)
         {
+            var destPaths = new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt", "deleted_unstaged_file.txt", "deleted_staged_file.txt", "i_dont_exist.txt" };
+
             InvalidMoveUseCases(sourcePath, sourceStatus, destPaths);
         }
 
         [Theory]
-        [InlineData("deleted_unstaged_file.txt", FileStatus.DeletedFromWorkdir, new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt", "deleted_unstaged_file.txt", "deleted_staged_file.txt", "i_dont_exist.txt" })]
-        [InlineData("deleted_staged_file.txt", FileStatus.DeletedFromIndex, new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt", "deleted_unstaged_file.txt", "deleted_staged_file.txt", "i_dont_exist.txt" })]
-        [InlineData("i_dont_exist.txt", FileStatus.Nonexistent, new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt", "deleted_unstaged_file.txt", "deleted_staged_file.txt", "i_dont_exist.txt" })]
-        public void MovingAFileNotInTheWorkingDirectoryThrows(string sourcePath, FileStatus sourceStatus, IEnumerable<string> destPaths)
+        [InlineData("deleted_unstaged_file.txt", FileStatus.DeletedFromWorkdir)]
+        [InlineData("deleted_staged_file.txt", FileStatus.DeletedFromIndex)]
+        [InlineData("i_dont_exist.txt", FileStatus.Nonexistent)]
+        public void MovingAFileNotInTheWorkingDirectoryThrows(string sourcePath, FileStatus sourceStatus)
         {
+            var destPaths = new[] { "README", "new_tracked_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new_untracked_file.txt", "deleted_unstaged_file.txt", "deleted_staged_file.txt", "i_dont_exist.txt" };
+
             InvalidMoveUseCases(sourcePath, sourceStatus, destPaths);
         }
 
@@ -202,7 +208,7 @@ namespace LibGit2Sharp.Tests
         public void PathsOfIndexEntriesAreExpressedInNativeFormat()
         {
             // Build relative path
-            string relFilePath = Path.Combine("directory", "Testfile.txt");
+            string relFilePath = Path.Combine("directory", "Testfile.txt").Replace('\\', '/');
 
             string repoPath = InitNewRepository();
 
@@ -456,18 +462,18 @@ namespace LibGit2Sharp.Tests
             using (var repo = new Repository(path))
             {
                 var before = repo.RetrieveStatus();
-                Assert.True(before.Any(se => se.State == FileStatus.NewInWorkdir));
-                Assert.True(before.Any(se => se.State == FileStatus.ModifiedInWorkdir));
-                Assert.True(before.Any(se => se.State == FileStatus.DeletedFromWorkdir));
+                Assert.Contains(before, se => se.State == FileStatus.NewInWorkdir);
+                Assert.Contains(before, se => se.State == FileStatus.ModifiedInWorkdir);
+                Assert.Contains(before, se => se.State == FileStatus.DeletedFromWorkdir);
 
                 AddSomeCornerCases(repo);
 
                 Commands.Stage(repo, "*");
 
                 var after = repo.RetrieveStatus();
-                Assert.False(after.Any(se => se.State == FileStatus.NewInWorkdir));
-                Assert.False(after.Any(se => se.State == FileStatus.ModifiedInWorkdir));
-                Assert.False(after.Any(se => se.State == FileStatus.DeletedFromWorkdir));
+                Assert.DoesNotContain(after, se => se.State == FileStatus.NewInWorkdir);
+                Assert.DoesNotContain(after, se => se.State == FileStatus.ModifiedInWorkdir);
+                Assert.DoesNotContain(after, se => se.State == FileStatus.DeletedFromWorkdir);
             }
         }
 

@@ -66,7 +66,7 @@ namespace LibGit2Sharp.Tests
                 Assert.Equal(CherryPickStatus.Conflicts, cherryPickResult.Status);
 
                 Assert.Null(cherryPickResult.Commit);
-                Assert.Equal(1, repo.Index.Conflicts.Count());
+                Assert.Single(repo.Index.Conflicts);
 
                 var conflict = repo.Index.Conflicts.First();
                 var changes = repo.Diff.Compare(repo.Lookup<Blob>(conflict.Theirs.Id), repo.Lookup<Blob>(conflict.Ours.Id));
@@ -139,7 +139,7 @@ namespace LibGit2Sharp.Tests
                 var result = repo.ObjectDatabase.CherryPickCommit(commitToMerge, ours, 0, null);
 
                 Assert.Equal(MergeTreeStatus.Succeeded, result.Status);
-                Assert.Equal(0, result.Conflicts.Count());
+                Assert.Empty(result.Conflicts);
             }
         }
 
@@ -159,6 +159,56 @@ namespace LibGit2Sharp.Tests
                 Assert.Equal(MergeTreeStatus.Conflicts, result.Status);
                 Assert.NotEmpty(result.Conflicts);
 
+            }
+        }
+
+        [Fact]
+        public void CanCherryPickCommitIntoIndex()
+        {
+            string path = SandboxMergeTestRepo();
+            using (var repo = new Repository(path))
+            {
+                var ours = repo.Head.Tip;
+
+                Commit commitToMerge = repo.Branches["fast_forward"].Tip;
+
+                using (TransientIndex index = repo.ObjectDatabase.CherryPickCommitIntoIndex(commitToMerge, ours, 0, null))
+                {
+                    var tree = index.WriteToTree();
+                    Assert.Equal(commitToMerge.Tree.Id, tree.Id);
+                }
+            }
+        }
+
+        [Fact]
+        public void CanCherryPickIntoIndexWithConflicts()
+        {
+            const string conflictBranchName = "conflicts";
+
+            string path = SandboxMergeTestRepo();
+            using (var repo = new Repository(path))
+            {
+                Branch branch = repo.Branches[conflictBranchName];
+                Assert.NotNull(branch);
+
+                using (TransientIndex index = repo.ObjectDatabase.CherryPickCommitIntoIndex(branch.Tip, repo.Head.Tip, 0, null))
+                {
+                    Assert.False(index.IsFullyMerged);
+
+                    var conflict = index.Conflicts.First();
+
+                    //Resolve the conflict by taking the blob from branch
+                    var blob = repo.Lookup<Blob>(conflict.Theirs.Id);
+                    //Add() does not remove conflict entries for the same path, so they must be explicitly removed first.
+                    index.Remove(conflict.Ours.Path);
+                    index.Add(blob, conflict.Ours.Path, Mode.NonExecutableFile);
+
+                    Assert.True(index.IsFullyMerged);
+                    var tree = index.WriteToTree();
+
+                    //Since we took the conflicted blob from the branch, the merged result should be the same as the branch.
+                    Assert.Equal(branch.Tip.Tree.Id, tree.Id);
+                }
             }
         }
 

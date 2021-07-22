@@ -1,5 +1,5 @@
+using LibGit2Sharp.Core;
 using System;
-using System.Globalization;
 using System.Runtime.Serialization;
 
 namespace LibGit2Sharp
@@ -8,7 +8,7 @@ namespace LibGit2Sharp
     /// The exception that is thrown when the provided specification cannot uniquely identify a reference, an object or a path.
     /// </summary>
     [Serializable]
-    public class AmbiguousSpecificationException : LibGit2SharpException
+    public class AmbiguousSpecificationException : NativeException
     {
         /// <summary>
         /// Initializes a new instance of the <see cref="AmbiguousSpecificationException"/> class.
@@ -51,5 +51,13 @@ namespace LibGit2Sharp
         protected AmbiguousSpecificationException(SerializationInfo info, StreamingContext context)
             : base(info, context)
         { }
+
+        internal override GitErrorCode ErrorCode
+        {
+            get
+            {
+                return GitErrorCode.Ambiguous;
+            }
+        }
     }
 }

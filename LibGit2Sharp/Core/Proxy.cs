@@ -14,90 +14,11 @@ namespace LibGit2Sharp.Core
 {
     internal class Proxy
     {
-        #region giterr_
-
-        public static void giterr_set_str(GitErrorCategory error_class, Exception exception)
-        {
-            if (exception is OutOfMemoryException)
-            {
-                NativeMethods.giterr_set_oom();
-            }
-            else
-            {
-                NativeMethods.giterr_set_str(error_class, ErrorMessageFromException(exception));
-            }
-        }
-
-        public static void giterr_set_str(GitErrorCategory error_class, String errorString)
-        {
-            NativeMethods.giterr_set_str(error_class, errorString);
-        }
-
-        /// <summary>
-        /// This method will take an exception and try to generate an error message
-        /// that captures the important messages of the error.
-        /// The formatting is a bit subjective.
-        /// </summary>
-        /// <param name="ex"></param>
-        /// <returns></returns>
-        public static string ErrorMessageFromException(Exception ex)
-        {
-            StringBuilder sb = new StringBuilder();
-            BuildErrorMessageFromException(sb, 0, ex);
-            return sb.ToString();
-        }
-
-        private static void BuildErrorMessageFromException(StringBuilder sb, int level, Exception ex)
-        {
-            string indent = new string(' ', level * 4);
-            sb.AppendFormat("{0}{1}", indent, ex.Message);
-
-            if (ex is AggregateException)
-            {
-                AggregateException aggregateException = ((AggregateException)ex).Flatten();
-
-                if (aggregateException.InnerExceptions.Count == 1)
-                {
-                    sb.AppendLine();
-                    sb.AppendLine();
-
-                    sb.AppendFormat("{0}Contained Exception:{1}", indent, Environment.NewLine);
-                    BuildErrorMessageFromException(sb, level + 1, aggregateException.InnerException);
-                }
-                else
-                {
-                    sb.AppendLine();
-                    sb.AppendLine();
-
-                    sb.AppendFormat("{0}Contained Exceptions:{1}", indent, Environment.NewLine);
-                    for (int i = 0; i < aggregateException.InnerExceptions.Count; i++)
-                    {
-                        if (i != 0)
-                        {
-                            sb.AppendLine();
-                            sb.AppendLine();
-                        }
-
-                        BuildErrorMessageFromException(sb, level + 1, aggregateException.InnerExceptions[i]);
-                    }
-                }
-            }
-            else if (ex.InnerException != null)
-            {
-                sb.AppendLine();
-                sb.AppendLine();
-                sb.AppendFormat("{0}Inner Exception:{1}", indent, Environment.NewLine);
-                BuildErrorMessageFromException(sb, level + 1, ex.InnerException);
-            }
-        }
-
-        #endregion
-
         #region git_blame_
 
         public static unsafe BlameHandle git_blame_file(
             RepositoryHandle repo,
-            FilePath path,
+            string path,
             git_blame_options options)
         {
             git_blame* ptr;
@@ -115,7 +36,7 @@ namespace LibGit2Sharp.Core
 
         #region git_blob_
 
-        public static unsafe IntPtr git_blob_create_fromstream(RepositoryHandle repo, FilePath hintpath)
+        public static unsafe IntPtr git_blob_create_fromstream(RepositoryHandle repo, string hintpath)
         {
             IntPtr writestream_ptr;
 
@@ -148,7 +69,7 @@ namespace LibGit2Sharp.Core
             return oid;
         }
 
-        public static unsafe UnmanagedMemoryStream git_blob_filtered_content_stream(RepositoryHandle repo, ObjectId id, FilePath path, bool check_for_binary_data)
+        public static unsafe UnmanagedMemoryStream git_blob_filtered_content_stream(RepositoryHandle repo, ObjectId id, string path, bool check_for_binary_data)
         {
             var buf = new GitBuf();
             var handle = new ObjectSafeWrapper(id, repo).ObjectPtr;
@@ -286,9 +207,9 @@ namespace LibGit2Sharp.Core
 
         #region git_buf_
 
-        public static void git_buf_free(GitBuf buf)
+        public static void git_buf_dispose(GitBuf buf)
         {
-            NativeMethods.git_buf_free(buf);
+            NativeMethods.git_buf_dispose(buf);
         }
 
         #endregion
@@ -517,9 +438,11 @@ namespace LibGit2Sharp.Core
 
         #region git_config_
 
-        public static unsafe void git_config_add_file_ondisk(ConfigurationHandle config, FilePath path, ConfigurationLevel level)
+        public static unsafe void git_config_add_file_ondisk(ConfigurationHandle config, FilePath path, ConfigurationLevel level, RepositoryHandle repo)
         {
-            int res = NativeMethods.git_config_add_file_ondisk(config, path, (uint)level, true);
+            // RepositoryHandle does implicit cast voodoo that is not null-safe, thus this explicit check
+            git_repository* repoHandle = (repo != null) ? (git_repository*)repo : null;
+            int res = NativeMethods.git_config_add_file_ondisk(config, path, (uint)level, repoHandle, true);
             Ensure.ZeroResult(res);
         }
 
@@ -570,7 +493,7 @@ namespace LibGit2Sharp.Core
         {
             return ConvertPath(NativeMethods.git_config_find_programdata);
         }
-        
+
         public static unsafe void git_config_free(git_config *config)
         {
             NativeMethods.git_config_free(config);
@@ -675,6 +598,14 @@ namespace LibGit2Sharp.Core
         public static unsafe void git_config_set_string(ConfigurationHandle config, string name, string value)
         {
             int res = NativeMethods.git_config_set_string(config, name, value);
+            Ensure.ZeroResult(res);
+        }
+
+        static readonly string non_existing_regex = Guid.NewGuid().ToString();
+
+        public static unsafe void git_config_add_string(ConfigurationHandle config, string name, string value)
+        {
+            int res = NativeMethods.git_config_set_multivar(config, name, non_existing_regex, value);
             Ensure.ZeroResult(res);
         }
 
@@ -922,6 +853,85 @@ namespace LibGit2Sharp.Core
 
         #endregion
 
+        #region git_error_
+
+        public static void git_error_set_str(GitErrorCategory error_class, Exception exception)
+        {
+            if (exception is OutOfMemoryException)
+            {
+                NativeMethods.git_error_set_oom();
+            }
+            else
+            {
+                NativeMethods.git_error_set_str(error_class, ErrorMessageFromException(exception));
+            }
+        }
+
+        public static void git_error_set_str(GitErrorCategory error_class, String errorString)
+        {
+            NativeMethods.git_error_set_str(error_class, errorString);
+        }
+
+        /// <summary>
+        /// This method will take an exception and try to generate an error message
+        /// that captures the important messages of the error.
+        /// The formatting is a bit subjective.
+        /// </summary>
+        /// <param name="ex"></param>
+        /// <returns></returns>
+        public static string ErrorMessageFromException(Exception ex)
+        {
+            StringBuilder sb = new StringBuilder();
+            BuildErrorMessageFromException(sb, 0, ex);
+            return sb.ToString();
+        }
+
+        private static void BuildErrorMessageFromException(StringBuilder sb, int level, Exception ex)
+        {
+            string indent = new string(' ', level * 4);
+            sb.AppendFormat("{0}{1}", indent, ex.Message);
+
+            if (ex is AggregateException)
+            {
+                AggregateException aggregateException = ((AggregateException)ex).Flatten();
+
+                if (aggregateException.InnerExceptions.Count == 1)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine();
+
+                    sb.AppendFormat("{0}Contained Exception:{1}", indent, Environment.NewLine);
+                    BuildErrorMessageFromException(sb, level + 1, aggregateException.InnerException);
+                }
+                else
+                {
+                    sb.AppendLine();
+                    sb.AppendLine();
+
+                    sb.AppendFormat("{0}Contained Exceptions:{1}", indent, Environment.NewLine);
+                    for (int i = 0; i < aggregateException.InnerExceptions.Count; i++)
+                    {
+                        if (i != 0)
+                        {
+                            sb.AppendLine();
+                            sb.AppendLine();
+                        }
+
+                        BuildErrorMessageFromException(sb, level + 1, aggregateException.InnerExceptions[i]);
+                    }
+                }
+            }
+            else if (ex.InnerException != null)
+            {
+                sb.AppendLine();
+                sb.AppendLine();
+                sb.AppendFormat("{0}Inner Exception:{1}", indent, Environment.NewLine);
+                BuildErrorMessageFromException(sb, level + 1, ex.InnerException);
+            }
+        }
+
+        #endregion
+
         #region git_filter_
 
         public static void git_filter_register(string name, IntPtr filterPtr, int priority)
@@ -1024,7 +1034,7 @@ namespace LibGit2Sharp.Core
 
         public static unsafe Conflict git_index_conflict_get(
             IndexHandle index,
-            FilePath path)
+            string path)
         {
             git_index_entry* ancestor, ours, theirs;
 
@@ -1089,7 +1099,7 @@ namespace LibGit2Sharp.Core
             return NativeMethods.git_index_get_byindex(index, n);
         }
 
-        public static unsafe git_index_entry* git_index_get_bypath(IndexHandle index, FilePath path, int stage)
+        public static unsafe git_index_entry* git_index_get_bypath(IndexHandle index, string path, int stage)
         {
             return NativeMethods.git_index_get_bypath(index, path, stage);
         }
@@ -1128,7 +1138,7 @@ namespace LibGit2Sharp.Core
             Ensure.ZeroResult(res);
         }
 
-        public static unsafe void git_index_remove_bypath(IndexHandle index, FilePath path)
+        public static unsafe void git_index_remove_bypath(IndexHandle index, string path)
         {
             int res = NativeMethods.git_index_remove_bypath(index, path);
             Ensure.ZeroResult(res);
@@ -1392,7 +1402,7 @@ namespace LibGit2Sharp.Core
             return git_foreach(resultSelector, c => NativeMethods.git_note_foreach(repo,
                                                                                    notes_ref,
                                                                                    (ref GitOid x, ref GitOid y, IntPtr p) => c(x, y, p),
-                                                                                   IntPtr.Zero));
+                                                                                   IntPtr.Zero), GitErrorCode.NotFound);
         }
 
         public static unsafe string git_note_message(NoteHandle note)
@@ -1610,9 +1620,9 @@ namespace LibGit2Sharp.Core
             return id;
         }
 
-        #endregion
+#endregion
 
-        #region git_patch_
+#region git_patch_
 
         public static unsafe PatchHandle git_patch_from_diff(DiffHandle diff, int idx)
         {
@@ -1636,9 +1646,9 @@ namespace LibGit2Sharp.Core
             return new Tuple<int, int>((int)add, (int)del);
         }
 
-        #endregion
+#endregion
 
-        #region git_packbuilder_
+#region git_packbuilder_
 
         public static unsafe PackBuilderHandle git_packbuilder_new(RepositoryHandle repo)
         {
@@ -1702,9 +1712,9 @@ namespace LibGit2Sharp.Core
         {
             return NativeMethods.git_packbuilder_written(packbuilder);
         }
-        #endregion
+#endregion
 
-        #region git_rebase
+#region git_rebase
 
         public static unsafe RebaseHandle git_rebase_init(
             RepositoryHandle repo,
@@ -1858,9 +1868,9 @@ namespace LibGit2Sharp.Core
             }
         }
 
-        #endregion
+#endregion
 
-        #region git_reference_
+#region git_reference_
 
         public static unsafe ReferenceHandle git_reference_create(
             RepositoryHandle repo,
@@ -2008,9 +2018,9 @@ namespace LibGit2Sharp.Core
             Ensure.ZeroResult(res);
         }
 
-        #endregion
+#endregion
 
-        #region git_reflog_
+#region git_reflog_
 
         public static unsafe ReflogHandle git_reflog_read(RepositoryHandle repo, string canonicalName)
         {
@@ -2052,9 +2062,9 @@ namespace LibGit2Sharp.Core
             return NativeMethods.git_reflog_entry_message(entry);
         }
 
-        #endregion
+#endregion
 
-        #region git_refspec
+#region git_refspec
 
         public static unsafe string git_refspec_transform(IntPtr refSpecPtr, string name)
         {
@@ -2113,9 +2123,9 @@ namespace LibGit2Sharp.Core
             return NativeMethods.git_refspec_dst_matches(refspec, reference);
         }
 
-        #endregion
+#endregion
 
-        #region git_remote_
+#region git_remote_
 
         public static unsafe TagFetchMode git_remote_autotag(RemoteHandle remote)
         {
@@ -2426,9 +2436,9 @@ namespace LibGit2Sharp.Core
             return NativeMethods.git_remote_pushurl(remote);
         }
 
-        #endregion
+#endregion
 
-        #region git_repository_
+#region git_repository_
 
         public static FilePath git_repository_discover(FilePath start_path)
         {
@@ -2637,9 +2647,9 @@ namespace LibGit2Sharp.Core
             Ensure.ZeroResult(res);
         }
 
-        #endregion
+#endregion
 
-        #region git_reset_
+#region git_reset_
 
         public static unsafe void git_reset(
             RepositoryHandle repo,
@@ -2654,9 +2664,9 @@ namespace LibGit2Sharp.Core
             }
         }
 
-        #endregion
+#endregion
 
-        #region git_revert_
+#region git_revert_
 
         public static unsafe void git_revert(
             RepositoryHandle repo,
@@ -2726,9 +2736,9 @@ namespace LibGit2Sharp.Core
             return handles.Item1;
         }
 
-        #endregion
+#endregion
 
-        #region git_revwalk_
+#region git_revwalk_
 
         public static unsafe void git_revwalk_hide(RevWalkerHandle walker, ObjectId commit_id)
         {
@@ -2783,15 +2793,15 @@ namespace LibGit2Sharp.Core
             NativeMethods.git_revwalk_simplify_first_parent(walker);
         }
 
-        #endregion
+#endregion
 
-        #region git_signature_
+#region git_signature_
 
         public static unsafe SignatureHandle git_signature_new(string name, string email, DateTimeOffset when)
         {
             git_signature* ptr;
 
-            int res = NativeMethods.git_signature_new(out ptr, name, email, when.ToSecondsSinceEpoch(),
+            int res = NativeMethods.git_signature_new(out ptr, name, email, when.ToUnixTimeSeconds(),
                                                       (int)when.Offset.TotalMinutes);
             Ensure.ZeroResult(res);
 
@@ -2815,9 +2825,9 @@ namespace LibGit2Sharp.Core
             return handle;
         }
 
-        #endregion
+#endregion
 
-        #region git_stash_
+#region git_stash_
 
         public static unsafe ObjectId git_stash_save(
             RepositoryHandle repo,
@@ -2897,9 +2907,9 @@ namespace LibGit2Sharp.Core
             return get_stash_status(NativeMethods.git_stash_pop(repo, (UIntPtr)index, opts));
         }
 
-        #endregion
+#endregion
 
-        #region git_status_
+#region git_status_
 
         public static unsafe FileStatus git_status_file(RepositoryHandle repo, FilePath path)
         {
@@ -2945,15 +2955,15 @@ namespace LibGit2Sharp.Core
             return NativeMethods.git_status_byindex(list, (UIntPtr)idx);
         }
 
-        #endregion
+#endregion
 
-        #region git_submodule_
+#region git_submodule_
 
         /// <summary>
         /// Returns a handle to the corresponding submodule,
         /// or an invalid handle if a submodule is not found.
         /// </summary>
-        public static unsafe SubmoduleHandle git_submodule_lookup(RepositoryHandle repo, FilePath name)
+        public static unsafe SubmoduleHandle git_submodule_lookup(RepositoryHandle repo, string name)
         {
             git_submodule* submodule;
             var res = NativeMethods.git_submodule_lookup(out submodule, repo, name);
@@ -3059,9 +3069,9 @@ namespace LibGit2Sharp.Core
             Ensure.ZeroResult(res);
         }
 
-        #endregion
+#endregion
 
-        #region git_tag_
+#region git_tag_
 
         public static unsafe ObjectId git_tag_annotation_create(
             RepositoryHandle repo,
@@ -3170,9 +3180,9 @@ namespace LibGit2Sharp.Core
             return NativeMethods.git_tag_target_type(tag);
         }
 
-        #endregion
+#endregion
 
-        #region git_trace_
+#region git_trace_
 
         /// <summary>
         /// Install/Enable logging inside of LibGit2 to send messages back to LibGit2Sharp.
@@ -3192,9 +3202,9 @@ namespace LibGit2Sharp.Core
             Ensure.ZeroResult(res);
         }
 
-        #endregion
+#endregion
 
-        #region git_transport_
+#region git_transport_
 
         public static void git_transport_register(String prefix, IntPtr transport_cb, IntPtr param)
         {
@@ -3221,18 +3231,18 @@ namespace LibGit2Sharp.Core
             Ensure.ZeroResult(res);
         }
 
-        #endregion
+#endregion
 
-        #region git_transport_smart_
+#region git_transport_smart_
 
         public static int git_transport_smart_credentials(out IntPtr cred, IntPtr transport, string user, int methods)
         {
             return NativeMethods.git_transport_smart_credentials(out cred, transport, user, methods);
         }
 
-        #endregion
+#endregion
 
-        #region git_tree_
+#region git_tree_
 
         public static unsafe Mode git_tree_entry_attributes(git_tree_entry* entry)
         {
@@ -3250,7 +3260,7 @@ namespace LibGit2Sharp.Core
             return new TreeEntryHandle(handle, false);
         }
 
-        public static unsafe TreeEntryHandle git_tree_entry_bypath(RepositoryHandle repo, ObjectId id, FilePath treeentry_path)
+        public static unsafe TreeEntryHandle git_tree_entry_bypath(RepositoryHandle repo, ObjectId id, string treeentry_path)
         {
             using (var obj = new ObjectSafeWrapper(id, repo))
             {
@@ -3288,9 +3298,9 @@ namespace LibGit2Sharp.Core
             return (int)NativeMethods.git_tree_entrycount(tree);
         }
 
-        #endregion
+#endregion
 
-        #region git_treebuilder_
+#region git_treebuilder_
 
         public static unsafe TreeBuilderHandle git_treebuilder_new(RepositoryHandle repo)
         {
@@ -3318,9 +3328,9 @@ namespace LibGit2Sharp.Core
             return oid;
         }
 
-        #endregion
+#endregion
 
-        #region git_transaction_
+#region git_transaction_
 
         public static void git_transaction_commit(IntPtr txn)
         {
@@ -3332,9 +3342,9 @@ namespace LibGit2Sharp.Core
             NativeMethods.git_transaction_free(txn);
         }
 
-        #endregion
+#endregion
 
-        #region git_libgit2_
+#region git_libgit2_
 
         /// <summary>
         /// Returns the features with which libgit2 was compiled.
@@ -3345,25 +3355,31 @@ namespace LibGit2Sharp.Core
         }
 
         // C# equivalent of libgit2's git_libgit2_opt_t
-        private enum LibGitOption
+        private enum LibGit2Option
         {
-            GetMWindowSize,             // GIT_OPT_GET_MWINDOW_SIZE
-            SetMWindowSize,             // GIT_OPT_SET_MWINDOW_SIZE
-            GetMWindowMappedLimit,      // GIT_OPT_GET_MWINDOW_MAPPED_LIMIT
-            SetMWindowMappedLimit,      // GIT_OPT_SET_MWINDOW_MAPPED_LIMIT
-            GetSearchPath,              // GIT_OPT_GET_SEARCH_PATH
-            SetSearchPath,              // GIT_OPT_SET_SEARCH_PATH
-            SetCacheObjectLimit,        // GIT_OPT_SET_CACHE_OBJECT_LIMIT
-            SetCacheMaxSize,            // GIT_OPT_SET_CACHE_MAX_SIZE
-            EnableCaching,              // GIT_OPT_ENABLE_CACHING
-            GetCachedMemory,            // GIT_OPT_GET_CACHED_MEMORY
-            GetTemplatePath,            // GIT_OPT_GET_TEMPLATE_PATH
-            SetTemplatePath,            // GIT_OPT_SET_TEMPLATE_PATH
-            SetSslCertLocations,        // GIT_OPT_SET_SSL_CERT_LOCATIONS
-            SetUserAgent,               // GIT_OPT_SET_USER_AGENT
-            EnableStrictObjectCreation, // GIT_OPT_ENABLE_STRICT_OBJECT_CREATION
-            SetSslCiphers,              // GIT_OPT_SET_SSL_CIPHERS
-            GetUserAgent,               // GIT_OPT_GET_USER_AGENT
+            GetMWindowSize,                  // GIT_OPT_GET_MWINDOW_SIZE
+            SetMWindowSize,                  // GIT_OPT_SET_MWINDOW_SIZE
+            GetMWindowMappedLimit,           // GIT_OPT_GET_MWINDOW_MAPPED_LIMIT
+            SetMWindowMappedLimit,           // GIT_OPT_SET_MWINDOW_MAPPED_LIMIT
+            GetSearchPath,                   // GIT_OPT_GET_SEARCH_PATH
+            SetSearchPath,                   // GIT_OPT_SET_SEARCH_PATH
+            SetCacheObjectLimit,             // GIT_OPT_SET_CACHE_OBJECT_LIMIT
+            SetCacheMaxSize,                 // GIT_OPT_SET_CACHE_MAX_SIZE
+            EnableCaching,                   // GIT_OPT_ENABLE_CACHING
+            GetCachedMemory,                 // GIT_OPT_GET_CACHED_MEMORY
+            GetTemplatePath,                 // GIT_OPT_GET_TEMPLATE_PATH
+            SetTemplatePath,                 // GIT_OPT_SET_TEMPLATE_PATH
+            SetSslCertLocations,             // GIT_OPT_SET_SSL_CERT_LOCATIONS
+            SetUserAgent,                    // GIT_OPT_SET_USER_AGENT
+            EnableStrictObjectCreation,      // GIT_OPT_ENABLE_STRICT_OBJECT_CREATION
+            EnableStrictSymbolicRefCreation, // GIT_OPT_ENABLE_STRICT_SYMBOLIC_REF_CREATION
+            SetSslCiphers,                   // GIT_OPT_SET_SSL_CIPHERS
+            GetUserAgent,                    // GIT_OPT_GET_USER_AGENT
+            EnableOfsDelta,                  // GIT_OPT_ENABLE_OFS_DELTA
+            EnableFsyncGitdir,               // GIT_OPT_ENABLE_FSYNC_GITDIR
+            GetWindowsSharemode,             // GIT_OPT_GET_WINDOWS_SHAREMODE
+            SetWindowsSharemode,             // GIT_OPT_SET_WINDOWS_SHAREMODE
+            EnableStrictHashVerification,    // GIT_OPT_ENABLE_STRICT_HASH_VERIFICATION
         }
 
         /// <summary>
@@ -3379,13 +3395,18 @@ namespace LibGit2Sharp.Core
 
             using (var buf = new GitBuf())
             {
-                var res = NativeMethods.git_libgit2_opts((int)LibGitOption.GetSearchPath, (uint)level, buf);
+                var res = NativeMethods.git_libgit2_opts((int)LibGit2Option.GetSearchPath, (uint)level, buf);
                 Ensure.ZeroResult(res);
 
                 path = LaxUtf8Marshaler.FromNative(buf.ptr) ?? string.Empty;
             }
 
             return path;
+        }
+
+        public static void git_libgit2_opts_enable_strict_hash_verification(bool enabled)
+        {
+            NativeMethods.git_libgit2_opts((int)LibGit2Option.EnableStrictHashVerification, enabled ? 1 : 0);
         }
 
         /// <summary>
@@ -3398,8 +3419,194 @@ namespace LibGit2Sharp.Core
         /// </param>
         public static void git_libgit2_opts_set_search_path(ConfigurationLevel level, string path)
         {
-            var res = NativeMethods.git_libgit2_opts((int)LibGitOption.SetSearchPath, (uint)level, path);
+            var res = NativeMethods.git_libgit2_opts((int)LibGit2Option.SetSearchPath, (uint)level, path);
             Ensure.ZeroResult(res);
+        }
+
+        /// <summary>
+        /// Enable or disable the libgit2 cache
+        /// </summary>
+        /// <param name="enabled">true to enable the cache, false otherwise</param>
+        public static void git_libgit2_opts_set_enable_caching(bool enabled)
+        {
+            // libgit2 expects non-zero value for true
+            var res = NativeMethods.git_libgit2_opts((int)LibGit2Option.EnableCaching, enabled ? 1 : 0);
+            Ensure.ZeroResult(res);
+        }
+
+        /// <summary>
+        /// Enable or disable the ofs_delta capabilty
+        /// </summary>
+        /// <param name="enabled">true to enable the ofs_delta capabilty, false otherwise</param>
+        public static void git_libgit2_opts_set_enable_ofsdelta(bool enabled)
+        {
+            // libgit2 expects non-zero value for true
+            var res = NativeMethods.git_libgit2_opts((int)LibGit2Option.EnableOfsDelta, enabled ? 1 : 0);
+            Ensure.ZeroResult(res);
+        }
+
+        /// <summary>
+        /// Enable or disable the strict_object_creation capabilty
+        /// </summary>
+        /// <param name="enabled">true to enable the strict_object_creation capabilty, false otherwise</param>
+        public static void git_libgit2_opts_set_enable_strictobjectcreation(bool enabled)
+        {
+            // libgit2 expects non-zero value for true
+            var res = NativeMethods.git_libgit2_opts((int)LibGit2Option.EnableStrictObjectCreation, enabled ? 1 : 0);
+            Ensure.ZeroResult(res);
+        }
+
+        /// <summary>
+        /// Sets the user-agent string to be used by the HTTP(S) transport.
+        /// Note that "git/2.0" will be prepended for compatibility.
+        /// </summary>
+        /// <param name="userAgent">The user-agent string to use</param>
+        public static void git_libgit2_opts_set_user_agent(string userAgent)
+        {
+            var res = NativeMethods.git_libgit2_opts((int)LibGit2Option.SetUserAgent, userAgent);
+            Ensure.ZeroResult(res);
+        }
+
+        /// <summary>
+        /// Gets the user-agent string used by libgit2.
+        /// <returns>
+        /// The user-agent string.
+        /// </returns>
+        /// </summary>
+        public static string git_libgit2_opts_get_user_agent()
+        {
+            string userAgent;
+
+            using (var buf = new GitBuf())
+            {
+                var res = NativeMethods.git_libgit2_opts((int)LibGit2Option.GetUserAgent, buf);
+                Ensure.ZeroResult(res);
+
+                userAgent = LaxUtf8Marshaler.FromNative(buf.ptr) ?? string.Empty;
+            }
+
+            return userAgent;
+        }
+
+        #endregion
+
+        #region git_worktree_
+
+        /// <summary>
+        /// Returns a handle to the corresponding worktree,
+        /// or an invalid handle if a worktree is not found.
+        /// </summary>
+        public static unsafe WorktreeHandle git_worktree_lookup(RepositoryHandle repo, string name)
+        {
+            git_worktree* worktree;
+            var res = NativeMethods.git_worktree_lookup(out worktree, repo, name);
+
+            switch (res)
+            {
+                case (int)GitErrorCode.Error:
+                case (int)GitErrorCode.NotFound:
+                case (int)GitErrorCode.Exists:
+                case (int)GitErrorCode.OrphanedHead:
+                    return null;
+
+                default:
+                    Ensure.ZeroResult(res);
+                    return new WorktreeHandle(worktree, true);
+            }
+        }
+
+        public static unsafe IList<string> git_worktree_list(RepositoryHandle repo)
+        {
+            var array = new GitStrArrayNative();
+
+            try
+            {
+                int res = NativeMethods.git_worktree_list(out array.Array, repo);
+                Ensure.ZeroResult(res);
+
+                return array.ReadStrings();
+            }
+            finally
+            {
+                array.Dispose();
+            }
+        }
+
+        public static unsafe RepositoryHandle git_repository_open_from_worktree(WorktreeHandle handle)
+        {
+            git_repository* repo;
+            int res = NativeMethods.git_repository_open_from_worktree(out repo, handle);
+
+            if (res == (int)GitErrorCode.NotFound)
+            {
+                throw new RepositoryNotFoundException("Handle doesn't point at a valid Git repository or workdir.");
+            }
+
+            Ensure.ZeroResult(res);
+
+            return new RepositoryHandle(repo, true);
+        }
+
+        public static unsafe WorktreeLock git_worktree_is_locked(WorktreeHandle worktree)
+        {
+            using (var buf = new GitBuf())
+            {
+                int res = NativeMethods.git_worktree_is_locked(buf, worktree);
+
+                if(res < 0)
+                {
+                    // error
+                    return null;
+                }
+
+                if (res == (int)GitErrorCode.Ok)
+                {
+                    return new WorktreeLock();
+                }
+
+                return new WorktreeLock(true, LaxUtf8Marshaler.FromNative(buf.ptr));
+            }
+        }
+
+        public static unsafe bool git_worktree_validate(WorktreeHandle worktree)
+        {
+            int res = NativeMethods.git_worktree_validate(worktree);
+
+            return res == (int)GitErrorCode.Ok;
+        }
+
+        public static unsafe bool git_worktree_unlock(WorktreeHandle worktree)
+        {
+            int res = NativeMethods.git_worktree_unlock(worktree);
+
+            return res == (int)GitErrorCode.Ok;
+        }
+
+        public static unsafe bool git_worktree_lock(WorktreeHandle worktree, string reason)
+        {
+            int res = NativeMethods.git_worktree_lock(worktree, reason);
+
+            return res == (int)GitErrorCode.Ok;
+        }
+
+        public static unsafe WorktreeHandle git_worktree_add(
+            RepositoryHandle repo,
+            string name,
+            string path,
+            git_worktree_add_options options)
+        {
+            git_worktree* worktree;
+            int res = NativeMethods.git_worktree_add(out worktree, repo, name, path, options);
+            Ensure.ZeroResult(res);
+            return new WorktreeHandle(worktree, true);
+        }
+
+        public static unsafe bool git_worktree_prune(WorktreeHandle worktree,
+            git_worktree_prune_options options)
+        {
+            int res = NativeMethods.git_worktree_prune(worktree, options);
+            Ensure.ZeroResult(res);
+            return true;
         }
 
         #endregion

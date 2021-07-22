@@ -33,6 +33,24 @@ namespace LibGit2Sharp.Tests
             }
         }
 
+        [Theory]
+        [InlineData("deleted_unstaged_file.txt", FileStatus.DeletedFromIndex)]
+        [InlineData("modified_unstaged_file.txt", FileStatus.ModifiedInIndex)]
+        [InlineData("new_untracked_file.txt", FileStatus.NewInIndex)]
+        public void StagingWritesIndex(string relativePath, FileStatus expectedStatus)
+        {
+            string path = SandboxStandardTestRepo();
+            using (var repo = new Repository(path))
+            {
+                Commands.Stage(repo, relativePath);
+            }
+
+            using (var repo = new Repository(path))
+            {
+                Assert.Equal(expectedStatus, repo.RetrieveStatus(relativePath));
+            }
+        }
+
         [Fact]
         public void CanStageTheUpdationOfAStagedFile()
         {
@@ -83,8 +101,8 @@ namespace LibGit2Sharp.Tests
                 Assert.Null(repo.Index[relativePath]);
                 Assert.Equal(status, repo.RetrieveStatus(relativePath));
 
-                Assert.DoesNotThrow(() => Commands.Stage(repo, relativePath));
-                Assert.DoesNotThrow(() => Commands.Stage(repo, relativePath, new StageOptions { ExplicitPathsOptions = new ExplicitPathsOptions { ShouldFailOnUnmatchedPath = false } }));
+                Commands.Stage(repo, relativePath);
+                Commands.Stage(repo, relativePath, new StageOptions { ExplicitPathsOptions = new ExplicitPathsOptions { ShouldFailOnUnmatchedPath = false } });
 
                 Assert.Equal(status, repo.RetrieveStatus(relativePath));
             }
@@ -222,7 +240,7 @@ namespace LibGit2Sharp.Tests
 
                 const string posixifiedPath = "Project/a_file.txt";
                 Assert.NotNull(repo.Index[posixifiedPath]);
-                Assert.Equal(file, repo.Index[posixifiedPath].Path);
+                Assert.Equal(posixifiedPath, repo.Index[posixifiedPath].Path);
             }
         }
 
@@ -387,8 +405,7 @@ namespace LibGit2Sharp.Tests
 
                     Commands.Stage(repo, "test.txt");
 
-                    Assert.DoesNotThrow(() => repo.Commit(
-                                "Commit", Constants.Signature, Constants.Signature));
+                    repo.Commit("Commit", Constants.Signature, Constants.Signature);
                 }
             }
         }

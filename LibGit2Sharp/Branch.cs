@@ -162,7 +162,7 @@ namespace LibGit2Sharp
         ///   If this is a local branch, this will return the configured
         ///   <see cref="Remote"/> to fetch from and push to. If this is a
         ///   remote-tracking branch, this will return the name of the remote 
-        ///   containing the tracked branch. If there no tracking information 
+        ///   containing the tracked branch. If there is no tracking information, 
         ///   this will return null.
         /// </para>
         /// </summary>
@@ -173,31 +173,6 @@ namespace LibGit2Sharp
                 return IsRemote
                     ? RemoteNameFromRemoteTrackingBranch()
                     : RemoteNameFromLocalBranch();
-            }
-        }
-
-        /// <summary>
-        /// Get the remote for the branch.
-        /// <para>
-        ///   If this is a local branch, this will return the configured
-        ///   <see cref="Remote"/> to fetch from and push to. If this is a
-        ///   remote-tracking branch, this will return the remote containing
-        ///   the tracked branch.
-        /// </para>
-        /// </summary>
-        [Obsolete("This property is deprecated. Use Repository.Network.Remotes[] using the RemoteName property")]
-        public virtual Remote Remote
-        {
-            get
-            {
-                string remoteName = RemoteName;
-
-                if (remoteName == null)
-                {
-                    return null;
-                }
-
-                return repo.Network.Remotes[remoteName];
             }
         }
 

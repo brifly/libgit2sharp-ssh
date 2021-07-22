@@ -10,9 +10,74 @@
   - Windows (x86/amd64): <https://ci.appveyor.com/project/libgit2/libgit2sharp>
   - Linux/Mac OS X: <https://travis-ci.org/libgit2/libgit2sharp>
 
-## v0.22 + 1
+## v0.26 - ([diff](https://github.com/libgit2/libgit2sharp/compare/v0.25..v0.26))
 
 ### Additions
+
+* Add `CherryPickCommitIntoIndex` to `ObjectDatabase`
+* The underlying native library (libgit2) now no longer relies on libcurl
+* The underlying native library now no longer relies on zlib
+* Add `IndentHeuristic` option to `CompareOptions`
+
+## v0.25 - ([diff](https://github.com/libgit2/libgit2sharp/compare/v0.24..v0.25))
+
+LibGit2Sharp is now .NET Core 2.0+ and .NET Framework compatible.
+
+### Additions
+
+ - `GitObject` now has a `Peel` method that will let you peel (for example)
+    a `Tag` to a `Tree`.
+ - `MergeOptions` now includes an option to `IgnoreWhitespaceChanges`.
+ - `TreeDefinition` can now `Add` an object with only the ID, which allows
+   users of large files to add entries without realizing a `Blob`.
+ - `ObjectDatabase` can now `Write` a `Stream`, which allows users of
+   large files to stream an object into storage without loading it into
+   memory.
+ - `ObjectDatabase` can now `MergeCommitsIntoIndex` allowing users to perform
+   an in-memory merge that produces an `Index` structure with conflicts.
+ - Users can enable or disable dependent object existence checks when
+   creating new objects with `GlobalSettings.SetEnableStrictObjectCreation`
+ - Users can enable or disable `ofs_delta` support with
+   `GlobalSettings.SetEnableOfsDelta`
+
+### Changes
+
+ - Status now does not show untracked files by default.  To retrieve
+   untracked files, included the `StatusOptions.IncludeUntracked` and/or
+   the `StatusOptions.RecurseUntrackedDirs` options.
+ - Status now does not show the ignored files by default.  To retrieve
+   ignored files, include the `StatusOptions.IncludeIgnored` option.
+ - `Commands.Pull` can now provide a `null` value for `PullOptions`,
+   which indicates that default values should be used.
+
+### Fixes
+
+ - The exception thrown when the native library cannot be loaded is now
+   able to be caught and will no longer crash the process.
+ - Getting the `Notes` collection from a `Repository` no longer throws an
+   exception when the repository has no notes.
+
+## v0.24 - ([diff](https://github.com/libgit2/libgit2sharp/compare/v0.23..v0.24))
+
+This is the last release before a moving to .NET Core compatible library.
+
+It will be the last supported release with the prior architecture; as a
+result, this release is primarily bugfixes and does not include major new
+APIs.
+
+## v0.23 - ([diff](https://github.com/libgit2/libgit2sharp/compare/v0.22..v0.23))
+
+### Additions
+
+ - Add `CherryPickCommit` and `RevertCommit` to `ObjectDatabase`.
+ - Add `IncludeIgnored` field to `SatusOptions`.
+ - Add `Commit.CreateBuffer` to write a commit object to a buffer and
+   `ObjectDatabase.CreateCommitWithSignature` to create commits which include a
+   signature.
+ - Add `Commit.ExtractSignature` to get a commit's signature.
+ - Add `ObjectDatabase.Write<T>` to write arbitrary objects to the object db.
+ - Add `Commit.PrettifyMessage`
+
 
 ### Changes
 
@@ -20,9 +85,13 @@
    instead of `NativeBinaries` for improved mono compatibility.  In
    addition, the names of platform architectures now better reflect
    the vendor naming (eg, `x86_64` instead of `amd64` on Linux).
- - Obsolete the config paths in RepositoryOptions
-
-### Fixes
+ - Deprecate the config paths in RepositoryOptions
+ - Deprecate the `QueryBy` overload with `FollowFilter`.
+ - Deprecate `Branch.Remote` in favour of `Branch.RemoteName`
+ - `Remote` no longer implement the equality operator.
+ - `Remote.Update` takes a remote name instead of an instance.
+ - `Fetch`, `Pull`, `Move`, `Remove`, `Stage` are now in a commands namespace to
+   indicate what they represent.
 
 ## v0.22 - ([diff](https://github.com/libgit2/libgit2sharp/compare/v0.21.1...v0.22))
 

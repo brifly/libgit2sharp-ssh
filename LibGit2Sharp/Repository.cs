@@ -35,6 +35,7 @@ namespace LibGit2Sharp
         private readonly Stack<IDisposable> toCleanup = new Stack<IDisposable>();
         private readonly Ignore ignore;
         private readonly SubmoduleCollection submodules;
+        private readonly WorktreeCollection worktrees;
         private readonly Lazy<PathCase> pathCase;
 
         [Flags]
@@ -91,7 +92,56 @@ namespace LibGit2Sharp
             this(path, options, RepositoryRequiredParameter.Path | RepositoryRequiredParameter.Options)
         {
         }
-        
+
+        internal Repository(WorktreeHandle worktreeHandle)
+        {
+            try
+            {
+                handle = Proxy.git_repository_open_from_worktree(worktreeHandle);
+                RegisterForCleanup(handle);
+                RegisterForCleanup(worktreeHandle);
+
+                isBare = Proxy.git_repository_is_bare(handle);
+
+                Func<Index> indexBuilder = () => new Index(this);
+
+                string configurationGlobalFilePath = null;
+                string configurationXDGFilePath = null;
+                string configurationSystemFilePath = null;
+
+                if (!isBare)
+                {
+                    index = new Lazy<Index>(() => indexBuilder());
+                }
+
+                commits = new CommitLog(this);
+                refs = new ReferenceCollection(this);
+                branches = new BranchCollection(this);
+                tags = new TagCollection(this);
+                stashes = new StashCollection(this);
+                info = new Lazy<RepositoryInformation>(() => new RepositoryInformation(this, isBare));
+                config = new Lazy<Configuration>(() => RegisterForCleanup(new Configuration(this,
+                                                                                            null,
+                                                                                            configurationGlobalFilePath,
+                                                                                            configurationXDGFilePath,
+                                                                                            configurationSystemFilePath)));
+                odb = new Lazy<ObjectDatabase>(() => new ObjectDatabase(this));
+                diff = new Diff(this);
+                notes = new NoteCollection(this);
+                ignore = new Ignore(this);
+                network = new Lazy<Network>(() => new Network(this));
+                rebaseOperation = new Lazy<Rebase>(() => new Rebase(this));
+                pathCase = new Lazy<PathCase>(() => new PathCase(this));
+                submodules = new SubmoduleCollection(this);
+                worktrees = new WorktreeCollection(this);
+            }
+            catch
+            {
+                CleanupDisposableDependencies();
+                throw;
+            }
+        }
+
         private Repository(string path, RepositoryOptions options, RepositoryRequiredParameter requiredParameter)
         {
             if ((requiredParameter & RepositoryRequiredParameter.Path) == RepositoryRequiredParameter.Path)
@@ -150,10 +200,6 @@ namespace LibGit2Sharp
                         Proxy.git_repository_set_workdir(handle, options.WorkingDirectoryPath);
                     }
 
-                    configurationGlobalFilePath = options.GlobalConfigurationLocation;
-                    configurationXDGFilePath = options.XdgConfigurationLocation;
-                    configurationSystemFilePath = options.SystemConfigurationLocation;
-
                     if (options.Identity != null)
                     {
                         Proxy.git_repository_set_ident(handle, options.Identity.Name, options.Identity.Email);
@@ -184,6 +230,7 @@ namespace LibGit2Sharp
                 rebaseOperation = new Lazy<Rebase>(() => new Rebase(this));
                 pathCase = new Lazy<PathCase>(() => new PathCase(this));
                 submodules = new SubmoduleCollection(this);
+                worktrees = new WorktreeCollection(this);
 
                 EagerlyLoadComponentsWithSpecifiedPaths(options);
             }
@@ -228,19 +275,6 @@ namespace LibGit2Sharp
             if (options == null)
             {
                 return;
-            }
-
-            if (options.GlobalConfigurationLocation != null ||
-                options.XdgConfigurationLocation != null ||
-                options.SystemConfigurationLocation != null)
-            {
-                // Dirty hack to force the eager load of the configuration
-                // without Resharper pestering about useless code
-
-                if (!Config.HasConfig(ConfigurationLevel.Local))
-                {
-                    throw new InvalidOperationException("Unexpected state.");
-                }
             }
 
             if (!string.IsNullOrEmpty(options.IndexPath))
@@ -413,6 +447,14 @@ namespace LibGit2Sharp
             get { return submodules; }
         }
 
+        /// <summary>
+        /// Worktrees in the repository.
+        /// </summary>
+        public WorktreeCollection Worktrees
+        {
+            get { return worktrees; }
+        }
+
         #region IDisposable Members
 
         /// <summary>
@@ -527,7 +569,7 @@ namespace LibGit2Sharp
             return Lookup(objectish, type.ToGitObjectType(), LookUpOptions.None);
         }
 
-        internal GitObject LookupInternal(ObjectId id, GitObjectType type, FilePath knownPath)
+        internal GitObject LookupInternal(ObjectId id, GitObjectType type, string knownPath)
         {
             Ensure.ArgumentNotNull(id, "id");
 
@@ -587,7 +629,7 @@ namespace LibGit2Sharp
 
             if (lookUpOptions.HasFlag(LookUpOptions.DereferenceResultToCommit))
             {
-                return obj.DereferenceToCommit(lookUpOptions.HasFlag(LookUpOptions.ThrowWhenCanNotBeDereferencedToACommit));
+                return obj.Peel<Commit>(lookUpOptions.HasFlag(LookUpOptions.ThrowWhenCanNotBeDereferencedToACommit));
             }
 
             return obj;
@@ -720,21 +762,26 @@ namespace LibGit2Sharp
                 throw new UserCancelledException("Clone cancelled by the user.");
             }
 
-            using (GitCheckoutOptsWrapper checkoutOptionsWrapper = new GitCheckoutOptsWrapper(options))
+            using (var checkoutOptionsWrapper = new GitCheckoutOptsWrapper(options))
+            using (var fetchOptionsWrapper = new GitFetchOptionsWrapper())
             {
                 var gitCheckoutOptions = checkoutOptionsWrapper.Options;
 
-                var remoteCallbacks = new RemoteCallbacks(options);
-                var gitRemoteCallbacks = remoteCallbacks.GenerateCallbacks();
-
-                var gitProxyOptions = new GitProxyOptions { Version = 1 };
+                var gitFetchOptions = fetchOptionsWrapper.Options;
+                gitFetchOptions.ProxyOptions = new GitProxyOptions { Version = 1 };
+                gitFetchOptions.RemoteCallbacks = new RemoteCallbacks(options).GenerateCallbacks();
+                if (options.FetchOptions != null && options.FetchOptions.CustomHeaders != null)
+                {
+                    gitFetchOptions.CustomHeaders =
+                        GitStrArrayManaged.BuildFrom(options.FetchOptions.CustomHeaders);
+                }
 
                 var cloneOpts = new GitCloneOptions
                 {
                     Version = 1,
                     Bare = options.IsBare ? 1 : 0,
                     CheckoutOpts = gitCheckoutOptions,
-                    FetchOpts = new GitFetchOptions { ProxyOptions = gitProxyOptions, RemoteCallbacks = gitRemoteCallbacks },
+                    FetchOpts = gitFetchOptions,
                 };
 
                 string clonedRepoPath;
@@ -881,51 +928,6 @@ namespace LibGit2Sharp
         public BlameHunkCollection Blame(string path, BlameOptions options)
         {
             return new BlameHunkCollection(this, Handle, path, options ?? new BlameOptions());
-        }
-
-        /// <summary>
-        /// Checkout the specified <see cref="Branch"/>, reference or SHA.
-        /// <para>
-        ///   If the committishOrBranchSpec parameter resolves to a branch name, then the checked out HEAD will
-        ///   will point to the branch. Otherwise, the HEAD will be detached, pointing at the commit sha.
-        /// </para>
-        /// </summary>
-        /// <param name="committishOrBranchSpec">A revparse spec for the commit or branch to checkout.</param>
-        /// <param name="options"><see cref="CheckoutOptions"/> controlling checkout behavior.</param>
-        /// <returns>The <see cref="Branch"/> that was checked out.</returns>
-        [Obsolete("This method is deprecated. Please use LibGit2Sharp.Commands.Checkout()")]
-        public Branch Checkout(string committishOrBranchSpec, CheckoutOptions options)
-        {
-            return Commands.Checkout(this, committishOrBranchSpec, options);
-        }
-
-        /// <summary>
-        /// Checkout the tip commit of the specified <see cref="Branch"/> object. If this commit is the
-        /// current tip of the branch, will checkout the named branch. Otherwise, will checkout the tip commit
-        /// as a detached HEAD.
-        /// </summary>
-        /// <param name="branch">The <see cref="Branch"/> to check out.</param>
-        /// <param name="options"><see cref="CheckoutOptions"/> controlling checkout behavior.</param>
-        /// <returns>The <see cref="Branch"/> that was checked out.</returns>
-        [Obsolete("This method is deprecated. Please use LibGit2Sharp.Commands.Checkout()")]
-        public Branch Checkout(Branch branch, CheckoutOptions options)
-        {
-            return Commands.Checkout(this, branch, options);
-        }
-
-        /// <summary>
-        /// Checkout the specified <see cref="LibGit2Sharp.Commit"/>.
-        /// <para>
-        ///   Will detach the HEAD and make it point to this commit sha.
-        /// </para>
-        /// </summary>
-        /// <param name="commit">The <see cref="LibGit2Sharp.Commit"/> to check out.</param>
-        /// <param name="options"><see cref="CheckoutOptions"/> controlling checkout behavior.</param>
-        /// <returns>The <see cref="Branch"/> that was checked out.</returns>
-        [Obsolete("This method is deprecated. Please use LibGit2Sharp.Commands.Checkout()")]
-        public Branch Checkout(Commit commit, CheckoutOptions options)
-        {
-            return Commands.Checkout(this, commit, options);
         }
 
         /// <summary>
@@ -1533,6 +1535,10 @@ namespace LibGit2Sharp
                 treeFlags |= GitMergeFlag.GIT_MERGE_SKIP_REUC;
             }
 
+            var fileFlags = options.IgnoreWhitespaceChange
+                ? GitMergeFileFlag.GIT_MERGE_FILE_IGNORE_WHITESPACE_CHANGE
+                : GitMergeFileFlag.GIT_MERGE_FILE_DEFAULT;
+
             var mergeOptions = new GitMergeOpts
             {
                 Version = 1,
@@ -1540,6 +1546,7 @@ namespace LibGit2Sharp
                 MergeTreeFlags = treeFlags,
                 RenameThreshold = (uint)options.RenameThreshold,
                 TargetLimit = (uint)options.TargetLimit,
+                FileFlags = fileFlags
             };
 
             bool earlyStop;
@@ -1654,136 +1661,6 @@ namespace LibGit2Sharp
         }
 
         /// <summary>
-        /// Promotes to the staging area the latest modifications of a file in the working directory (addition, updation or removal).
-        ///
-        /// If this path is ignored by configuration then it will not be staged unless <see cref="StageOptions.IncludeIgnored"/> is unset.
-        /// </summary>
-        /// <param name="path">The path of the file within the working directory.</param>
-        /// <param name="stageOptions">Determines how paths will be staged.</param>
-        [Obsolete("This method is deprecated. Please use LibGit2Sharp.Commands.Stage()")]
-        public void Stage(string path, StageOptions stageOptions)
-        {
-            Commands.Stage(this, path, stageOptions);
-        }
-
-        /// <summary>
-        /// Promotes to the staging area the latest modifications of a collection of files in the working directory (addition, updation or removal).
-        ///
-        /// Any paths (even those listed explicitly) that are ignored by configuration will not be staged unless <see cref="StageOptions.IncludeIgnored"/> is unset.
-        /// </summary>
-        /// <param name="paths">The collection of paths of the files within the working directory.</param>
-        /// <param name="stageOptions">Determines how paths will be staged.</param>
-        [Obsolete("This method is deprecated. Please use LibGit2Sharp.Commands.Stage()")]
-        public void Stage(IEnumerable<string> paths, StageOptions stageOptions)
-        {
-            Commands.Stage(this, paths, stageOptions);
-        }
-
-        /// <summary>
-        /// Removes from the staging area all the modifications of a file since the latest commit (addition, updation or removal).
-        /// </summary>
-        /// <param name="path">The path of the file within the working directory.</param>
-        /// <param name="explicitPathsOptions">
-        /// The passed <paramref name="path"/> will be treated as explicit paths.
-        /// Use these options to determine how unmatched explicit paths should be handled.
-        /// </param>
-        [Obsolete("This method is deprecated. Please use LibGit2Sharp.Commands.Unstage()")]
-        public void Unstage(string path, ExplicitPathsOptions explicitPathsOptions)
-        {
-            Commands.Unstage(this, path, explicitPathsOptions);
-        }
-
-        /// <summary>
-        /// Removes from the staging area all the modifications of a collection of file since the latest commit (addition, updation or removal).
-        /// </summary>
-        /// <param name="paths">The collection of paths of the files within the working directory.</param>
-        /// <param name="explicitPathsOptions">
-        /// The passed <paramref name="paths"/> will be treated as explicit paths.
-        /// Use these options to determine how unmatched explicit paths should be handled.
-        /// </param>
-        [Obsolete("This method is deprecated. Please use LibGit2Sharp.Commands.Unstage()")]
-        public void Unstage(IEnumerable<string> paths, ExplicitPathsOptions explicitPathsOptions)
-        {
-            Commands.Unstage(this, paths, explicitPathsOptions);
-        }
-
-        /// <summary>
-        /// Moves and/or renames a file in the working directory and promotes the change to the staging area.
-        /// </summary>
-        /// <param name="sourcePath">The path of the file within the working directory which has to be moved/renamed.</param>
-        /// <param name="destinationPath">The target path of the file within the working directory.</param>
-        [Obsolete("This method is deprecatd. Please use LibGit2Sharp.Commands.Move()")]
-        public void Move(string sourcePath, string destinationPath)
-        {
-            Commands.Move(this, sourcePath, destinationPath);
-        }
-
-         /// <summary>
-        /// Moves and/or renames a collection of files in the working directory and promotes the changes to the staging area.
-        /// </summary>
-        /// <param name="sourcePaths">The paths of the files within the working directory which have to be moved/renamed.</param>
-        /// <param name="destinationPaths">The target paths of the files within the working directory.</param>
-        [Obsolete("This method is deprecatd. Please use LibGit2Sharp.Commands.Move()")]
-        public void Move(IEnumerable<string> sourcePaths, IEnumerable<string> destinationPaths)
-        {
-            Commands.Move(this, sourcePaths, destinationPaths);
-        }
-
-        /// <summary>
-        /// Removes a file from the staging area, and optionally removes it from the working directory as well.
-        /// <para>
-        ///   If the file has already been deleted from the working directory, this method will only deal
-        ///   with promoting the removal to the staging area.
-        /// </para>
-        /// <para>
-        ///   The default behavior is to remove the file from the working directory as well.
-        /// </para>
-        /// <para>
-        ///   When not passing a <paramref name="explicitPathsOptions"/>, the passed path will be treated as
-        ///   a pathspec. You can for example use it to pass the relative path to a folder inside the working directory,
-        ///   so that all files beneath this folders, and the folder itself, will be removed.
-        /// </para>
-        /// </summary>
-        /// <param name="path">The path of the file within the working directory.</param>
-        /// <param name="removeFromWorkingDirectory">True to remove the file from the working directory, False otherwise.</param>
-        /// <param name="explicitPathsOptions">
-        /// The passed <paramref name="path"/> will be treated as an explicit path.
-        /// Use these options to determine how unmatched explicit paths should be handled.
-        /// </param>
-        [Obsolete("This method is deprecated. Please use LibGit2Sharp.Commands.Remove")]
-        public void Remove(string path, bool removeFromWorkingDirectory, ExplicitPathsOptions explicitPathsOptions)
-        {
-            Commands.Remove(this, path, removeFromWorkingDirectory, explicitPathsOptions);
-        }
-
-        /// <summary>
-        /// Removes a collection of fileS from the staging, and optionally removes them from the working directory as well.
-        /// <para>
-        ///   If a file has already been deleted from the working directory, this method will only deal
-        ///   with promoting the removal to the staging area.
-        /// </para>
-        /// <para>
-        ///   The default behavior is to remove the files from the working directory as well.
-        /// </para>
-        /// <para>
-        ///   When not passing a <paramref name="explicitPathsOptions"/>, the passed paths will be treated as
-        ///   a pathspec. You can for example use it to pass the relative paths to folders inside the working directory,
-        ///   so that all files beneath these folders, and the folders themselves, will be removed.
-        /// </para>
-        /// </summary>
-        /// <param name="paths">The collection of paths of the files within the working directory.</param>
-        /// <param name="removeFromWorkingDirectory">True to remove the files from the working directory, False otherwise.</param>
-        /// <param name="explicitPathsOptions">
-        /// The passed <paramref name="paths"/> will be treated as explicit paths.
-        /// Use these options to determine how unmatched explicit paths should be handled.
-        /// </param>
-        [Obsolete("This method is deprecated. Please use LibGit2Sharp.Commands.Remove")]
-        public void Remove(IEnumerable<string> paths, bool removeFromWorkingDirectory, ExplicitPathsOptions explicitPathsOptions)
-        {
-            Commands.Remove(this, paths, removeFromWorkingDirectory, explicitPathsOptions);
-        }
-
-        /// <summary>
         /// Retrieves the state of a file in the working directory, comparing it against the staging area and the latest commit.
         /// </summary>
         /// <param name="filePath">The relative path within the working directory to the file.</param>
@@ -1843,7 +1720,7 @@ namespace LibGit2Sharp
         /// </para>
         /// <para>
         ///   Optionally, the <paramref name="options"/> parameter allow to tweak the
-        ///   search strategy (considering lightweith tags, or even branches as reference points)
+        ///   search strategy (considering lightweight tags, or even branches as reference points)
         ///   and the formatting of the returned identifier.
         /// </para>
         /// </summary>

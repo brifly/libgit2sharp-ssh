@@ -4,13 +4,12 @@ using System.Linq;
 using System.Text;
 using LibGit2Sharp.Tests.TestHelpers;
 using Xunit;
-using Xunit.Extensions;
 
 namespace LibGit2Sharp.Tests
 {
     public class DiffTreeToTreeFixture : BaseFixture
     {
-        private static readonly string subBranchFilePath = Path.Combine("1", "branch_file.txt");
+        private static readonly string subBranchFilePath = String.Join("/", "1", "branch_file.txt");
 
         [Fact]
         public void ComparingATreeAgainstItselfReturnsNoDifference()
@@ -20,7 +19,7 @@ namespace LibGit2Sharp.Tests
             {
                 Tree tree = repo.Head.Tip.Tree;
 
-                using(var changes = repo.Diff.Compare<TreeChanges>(tree, tree))
+                using (var changes = repo.Diff.Compare<TreeChanges>(tree, tree))
                 {
                     Assert.Empty(changes);
                 }
@@ -64,8 +63,8 @@ namespace LibGit2Sharp.Tests
 
                 using (var changes = repo.Diff.Compare<TreeChanges>(parentCommitTree, commitTree))
                 {
-                    Assert.Equal(1, changes.Count());
-                    Assert.Equal(1, changes.Added.Count());
+                    Assert.Single(changes);
+                    Assert.Single(changes.Added);
 
                     TreeEntryChanges treeEntryChanges = changes.Single(c => c.Path == "1.txt");
 
@@ -112,13 +111,13 @@ namespace LibGit2Sharp.Tests
 
                 File.AppendAllText(filepath, "abcdef");
 
-                using(var patch = repo.Diff.Compare<Patch>(commit.Tree, DiffTargets.WorkingDirectory, new[] { filename }))
+                using (var patch = repo.Diff.Compare<Patch>(commit.Tree, DiffTargets.WorkingDirectory, new[] { filename }))
                     Assert.True(patch[filename].IsBinaryComparison);
 
                 Commands.Stage(repo, filename);
                 var commit2 = repo.Commit("Update binary file", Constants.Signature, Constants.Signature);
 
-                using(var patch2 = repo.Diff.Compare<Patch>(commit.Tree, commit2.Tree, new[] { filename }))
+                using (var patch2 = repo.Diff.Compare<Patch>(commit.Tree, commit2.Tree, new[] { filename }))
                     Assert.True(patch2[filename].IsBinaryComparison);
             }
         }
@@ -138,13 +137,13 @@ namespace LibGit2Sharp.Tests
 
                 File.Delete(filepath);
 
-                using(var patch = repo.Diff.Compare<Patch>(commit.Tree, DiffTargets.WorkingDirectory, new [] {filename}))
+                using (var patch = repo.Diff.Compare<Patch>(commit.Tree, DiffTargets.WorkingDirectory, new[] { filename }))
                     Assert.True(patch[filename].IsBinaryComparison);
 
                 Commands.Remove(repo, filename);
                 var commit2 = repo.Commit("Delete binary file", Constants.Signature, Constants.Signature);
 
-                using(var patch2 = repo.Diff.Compare<Patch>(commit.Tree, commit2.Tree, new[] { filename }))
+                using (var patch2 = repo.Diff.Compare<Patch>(commit.Tree, commit2.Tree, new[] { filename }))
                     Assert.True(patch2[filename].IsBinaryComparison);
             }
         }
@@ -172,7 +171,7 @@ namespace LibGit2Sharp.Tests
                 {
                     Assert.NotNull(changes);
 
-                    Assert.Equal(1, changes.Count());
+                    Assert.Single(changes);
                     Assert.Equal(subBranchFilePath, changes.Added.Single().Path);
                 }
             }
@@ -205,7 +204,7 @@ namespace LibGit2Sharp.Tests
                 {
                     Assert.Equal(10, changes.Count());
                     Assert.Equal(9, changes.Added.Count());
-                    Assert.Equal(1, changes.Deleted.Count());
+                    Assert.Single(changes.Deleted);
 
                     Assert.Equal("readme.txt", changes.Deleted.Single().Path);
                     Assert.Equal(new[] { "1.txt", subBranchFilePath, "README", "branch_file.txt", "deleted_staged_file.txt", "deleted_unstaged_file.txt", "modified_staged_file.txt", "modified_unstaged_file.txt", "new.txt" },
@@ -233,13 +232,13 @@ namespace LibGit2Sharp.Tests
                 using (var changes = repo.Diff.Compare<TreeChanges>(commitTreeWithDifferentAncestor, commitTree,
                         new[] { "if-I-exist-this-test-is-really-unlucky.txt" }, new ExplicitPathsOptions { ShouldFailOnUnmatchedPath = false }))
                 {
-                    Assert.Equal(0, changes.Count());
+                    Assert.Empty(changes);
                 }
 
                 using (var changes = repo.Diff.Compare<TreeChanges>(commitTreeWithDifferentAncestor, commitTree,
                     new[] { "if-I-exist-this-test-is-really-unlucky.txt" }))
                 {
-                    Assert.Equal(0, changes.Count());
+                    Assert.Empty(changes);
                 }
             }
         }
@@ -288,9 +287,9 @@ namespace LibGit2Sharp.Tests
 
                 using (var changes = repo.Diff.Compare<TreeChanges>(rootCommitTree, commitTreeWithRenamedFile))
                 {
-                    Assert.Equal(1, changes.Count());
+                    Assert.Single(changes);
                     Assert.Equal("my-name-does-not-feel-right.txt", changes.Single(c => c.Path == "super-file.txt").OldPath);
-                    Assert.Equal(1, changes.Renamed.Count());
+                    Assert.Single(changes.Renamed);
                 }
             }
         }
@@ -317,8 +316,8 @@ namespace LibGit2Sharp.Tests
 
                 using (var changes = repo.Diff.Compare<TreeChanges>(old.Tree, @new.Tree))
                 {
-                    Assert.Equal(1, changes.Count());
-                    Assert.Equal(1, changes.Renamed.Count());
+                    Assert.Single(changes);
+                    Assert.Single(changes.Renamed);
                     Assert.Equal(originalPath, changes.Renamed.Single().OldPath);
                     Assert.Equal(renamedPath, changes.Renamed.Single().Path);
                 }
@@ -370,7 +369,7 @@ namespace LibGit2Sharp.Tests
                 compareOptions.Similarity.RenameThreshold = 90;
 
                 using (var changes = repo.Diff.Compare<TreeChanges>(old.Tree, @new.Tree, compareOptions: compareOptions))
-                    Assert.False(changes.Any(x => x.Status == ChangeKind.Renamed));
+                    Assert.DoesNotContain(changes, x => x.Status == ChangeKind.Renamed);
             }
         }
 
@@ -400,8 +399,8 @@ namespace LibGit2Sharp.Tests
                         Similarity = SimilarityOptions.Exact,
                     }))
                 {
-                    Assert.Equal(1, changes.Count());
-                    Assert.Equal(1, changes.Renamed.Count());
+                    Assert.Single(changes);
+                    Assert.Single(changes.Renamed);
                     Assert.Equal(originalPath, changes.Renamed.Single().OldPath);
                     Assert.Equal(renamedPath, changes.Renamed.Single().Path);
                 }
@@ -435,8 +434,8 @@ namespace LibGit2Sharp.Tests
                         Similarity = SimilarityOptions.Exact,
                     }))
                 {
-                    Assert.Equal(1, changes.Count());
-                    Assert.Equal(1, changes.Copied.Count());
+                    Assert.Single(changes);
+                    Assert.Single(changes.Copied);
                 }
             }
         }
@@ -470,9 +469,9 @@ namespace LibGit2Sharp.Tests
                     }))
                 {
                     Assert.Equal(2, changes.Count());
-                    Assert.Equal(0, changes.Renamed.Count());
-                    Assert.Equal(1, changes.Added.Count());
-                    Assert.Equal(1, changes.Deleted.Count());
+                    Assert.Empty(changes.Renamed);
+                    Assert.Single(changes.Added);
+                    Assert.Single(changes.Deleted);
                 }
             }
         }
@@ -509,8 +508,8 @@ namespace LibGit2Sharp.Tests
                         }))
                 {
                     Assert.Equal(2, changes.Count());
-                    Assert.Equal(1, changes.Unmodified.Count());
-                    Assert.Equal(1, changes.Copied.Count());
+                    Assert.Single(changes.Unmodified);
+                    Assert.Single(changes.Copied);
                     Assert.Equal(originalPath, changes.Copied.Single().OldPath);
                     Assert.Equal(copiedPath, changes.Copied.Single().Path);
                 }
@@ -545,7 +544,7 @@ namespace LibGit2Sharp.Tests
                         }))
                 {
                     Assert.Equal(2, changes.Count());
-                    Assert.Equal(0, changes.Renamed.Count());
+                    Assert.Empty(changes.Renamed);
                 }
             }
         }
@@ -580,8 +579,8 @@ namespace LibGit2Sharp.Tests
                             Similarity = SimilarityOptions.CopiesHarder,
                         }))
                 {
-                    Assert.Equal(1, changes.Count());
-                    Assert.Equal(1, changes.Copied.Count());
+                    Assert.Single(changes);
+                    Assert.Single(changes.Copied);
                     Assert.Equal(originalPath, changes.Copied.Single().OldPath);
                     Assert.Equal(copiedPath, changes.Copied.Single().Path);
                 }
@@ -613,8 +612,8 @@ namespace LibGit2Sharp.Tests
 
                 using (var changes = repo.Diff.Compare<TreeChanges>(old.Tree, @new.Tree))
                 {
-                    Assert.Equal(1, changes.Count());
-                    Assert.Equal(0, changes.Copied.Count());
+                    Assert.Single(changes);
+                    Assert.Empty(changes.Copied);
                 }
             }
         }
@@ -653,7 +652,7 @@ namespace LibGit2Sharp.Tests
                         }))
                 {
                     Assert.Equal(2, changes.Count());
-                    Assert.Equal(1, changes.Copied.Count());
+                    Assert.Single(changes.Copied);
                     Assert.Equal(originalPath, changes.Copied.Single().OldPath);
                     Assert.Equal(copiedPath, changes.Copied.Single().Path);
                 }
@@ -689,7 +688,7 @@ namespace LibGit2Sharp.Tests
                 using (var changes = repo.Diff.Compare<TreeChanges>(old.Tree, @new.Tree))
                 {
                     Assert.Equal(2, changes.Count());
-                    Assert.Equal(0, changes.Copied.Count());
+                    Assert.Empty(changes.Copied);
                 }
             }
         }
@@ -704,7 +703,7 @@ namespace LibGit2Sharp.Tests
                 Touch(repo.Info.WorkingDirectory, "a.txt", "abc\ndef\n");
                 Touch(repo.Info.WorkingDirectory, "b.txt", "abc\ndef\n");
 
-                Commands.Stage(repo, new[] {"a.txt", "b.txt"});
+                Commands.Stage(repo, new[] { "a.txt", "b.txt" });
                 Commit old = repo.Commit("Initial", Constants.Signature, Constants.Signature);
 
                 File.AppendAllText(Path.Combine(repo.Info.WorkingDirectory, "b.txt"), "ghi\njkl\n");
@@ -715,8 +714,8 @@ namespace LibGit2Sharp.Tests
                     compareOptions: new CompareOptions { IncludeUnmodified = true }))
                 {
                     Assert.Equal(2, changes.Count());
-                    Assert.Equal(1, changes.Unmodified.Count());
-                    Assert.Equal(1, changes.Modified.Count());
+                    Assert.Single(changes.Unmodified);
+                    Assert.Single(changes.Modified);
                 }
             }
         }
@@ -728,12 +727,12 @@ namespace LibGit2Sharp.Tests
             var path = Repository.Init(scd.DirectoryPath);
             using (var repo = new Repository(path))
             {
-                const string originalPath =  "original.txt";
-                const string renamedPath =   "renamed.txt";
+                const string originalPath = "original.txt";
+                const string renamedPath = "renamed.txt";
                 const string originalPath2 = "original2.txt";
-                const string copiedPath1 =   "copied.txt";
+                const string copiedPath1 = "copied.txt";
                 const string originalPath3 = "original3.txt";
-                const string copiedPath2 =   "copied2.txt";
+                const string copiedPath2 = "copied2.txt";
 
                 Touch(repo.Info.WorkingDirectory, originalPath, "a\nb\nc\nd\n");
                 Touch(repo.Info.WorkingDirectory, originalPath2, "1\n2\n3\n4\n");
@@ -768,8 +767,8 @@ namespace LibGit2Sharp.Tests
                         }))
                 {
                     Assert.Equal(4, changes.Count());
-                    Assert.Equal(1, changes.Modified.Count());
-                    Assert.Equal(1, changes.Renamed.Count());
+                    Assert.Single(changes.Modified);
+                    Assert.Single(changes.Renamed);
                     Assert.Equal(originalPath, changes.Renamed.Single().OldPath);
                     Assert.Equal(renamedPath, changes.Renamed.Single().Path);
                     Assert.Equal(2, changes.Copied.Count());
@@ -818,8 +817,8 @@ namespace LibGit2Sharp.Tests
 
                 using (var changes = repo.Diff.Compare<TreeChanges>(rootCommitTree, commitTreeWithUpdatedFile))
                 {
-                    Assert.Equal(1, changes.Count());
-                    Assert.Equal(1, changes.Modified.Count());
+                    Assert.Single(changes);
+                    Assert.Single(changes.Modified);
                 }
 
                 using (var patch = repo.Diff.Compare<Patch>(rootCommitTree, commitTreeWithUpdatedFile,
@@ -917,9 +916,9 @@ namespace LibGit2Sharp.Tests
                 using (var changes = repo.Diff.Compare<TreeChanges>(rootCommitTree, mergedCommitTree, compareOptions: compareOptions))
                 {
                     Assert.Equal(3, changes.Count());
-                    Assert.Equal(1, changes.Modified.Count());
-                    Assert.Equal(1, changes.Deleted.Count());
-                    Assert.Equal(1, changes.Added.Count());
+                    Assert.Single(changes.Modified);
+                    Assert.Single(changes.Deleted);
+                    Assert.Single(changes.Added);
 
                     Assert.Equal(Mode.Nonexistent, changes.Single(c => c.Path == "my-name-does-not-feel-right.txt").Mode);
                 }
@@ -983,10 +982,10 @@ namespace LibGit2Sharp.Tests
                 (path, changes) =>
                 {
                     Assert.Equal(2, changes.Count());
-                    Assert.Equal(1, changes.Deleted.Count());
-                    Assert.Equal(1, changes.TypeChanged.Count());
+                    Assert.Single(changes.Deleted);
+                    Assert.Single(changes.TypeChanged);
 
-                    TreeEntryChanges change = changes.Single(c => c.Path== path);
+                    TreeEntryChanges change = changes.Single(c => c.Path == path);
                     Assert.Equal(Mode.SymbolicLink, change.OldMode);
                     Assert.Equal(Mode.NonExecutableFile, change.Mode);
                     Assert.Equal(ChangeKind.TypeChanged, change.Status);
@@ -1005,8 +1004,8 @@ namespace LibGit2Sharp.Tests
                 (path, changes) =>
                 {
                     Assert.Equal(2, changes.Count());
-                    Assert.Equal(1, changes.Deleted.Count());
-                    Assert.Equal(1, changes.Renamed.Count());
+                    Assert.Single(changes.Deleted);
+                    Assert.Single(changes.Renamed);
 
                     TreeEntryChanges renamed = changes.Renamed.Single();
                     Assert.Equal(Mode.NonExecutableFile, renamed.OldMode);
@@ -1032,16 +1031,16 @@ namespace LibGit2Sharp.Tests
 
                 using (var changes = repo.Diff.Compare<TreeChanges>(tree, null))
                 {
-                    Assert.Equal(1, changes.Count());
-                    Assert.Equal(1, changes.Deleted.Count());
+                    Assert.Single(changes);
+                    Assert.Single(changes.Deleted);
 
                     Assert.Equal("readme.txt", changes.Deleted.Single().Path);
                 }
 
                 using (var changes = repo.Diff.Compare<TreeChanges>(null, tree))
                 {
-                    Assert.Equal(1, changes.Count());
-                    Assert.Equal(1, changes.Added.Count());
+                    Assert.Single(changes);
+                    Assert.Single(changes.Added);
 
                     Assert.Equal("readme.txt", changes.Added.Single().Path);
                 }
@@ -1056,7 +1055,7 @@ namespace LibGit2Sharp.Tests
             {
                 using (var changes = repo.Diff.Compare<TreeChanges>(default(Tree), default(Tree)))
                 {
-                    Assert.Equal(0, changes.Count());
+                    Assert.Empty(changes);
                 }
             }
         }
@@ -1087,9 +1086,9 @@ namespace LibGit2Sharp.Tests
             using (var repo = new Repository(path))
             {
                 SetFilemode(repo, true);
-                using(var changes = repo.Diff.Compare<TreeChanges>(new[] { file }))
+                using (var changes = repo.Diff.Compare<TreeChanges>(new[] { file }))
                 {
-                    Assert.Equal(1, changes.Count());
+                    Assert.Single(changes);
 
                     var change = changes.Modified.Single();
                     Assert.Equal(Mode.ExecutableFile, change.OldMode);
@@ -1102,7 +1101,7 @@ namespace LibGit2Sharp.Tests
                 SetFilemode(repo, false);
                 using (var changes = repo.Diff.Compare<TreeChanges>(new[] { file }))
                 {
-                    Assert.Equal(0, changes.Count());
+                    Assert.Empty(changes);
                 }
             }
         }
@@ -1143,6 +1142,44 @@ namespace LibGit2Sharp.Tests
                 {
                     Assert.Equal(ChangeKind.Modified, changes.Single(c => c.Path == "a.txt").Status);
                     Assert.Equal(ChangeKind.Modified, changes.Single(c => c.Path == "A.TXT").Status);
+                }
+            }
+        }
+
+        [Fact]
+        public void RetrievingDiffContainsRightAmountOfAddedAndDeletedLines()
+        {
+            ObjectId treeOldOid, treeNewOid;
+
+            string repoPath = InitNewRepository();
+
+            using (var repo = new Repository(repoPath))
+            {
+                Blob oldContent = OdbHelper.CreateBlob(repo, "awesome content\n");
+                Blob newContent = OdbHelper.CreateBlob(repo, "more awesome content\n");
+
+                var td = new TreeDefinition()
+                    .Add("A.TXT", oldContent, Mode.NonExecutableFile)
+                    .Add("a.txt", oldContent, Mode.NonExecutableFile);
+
+                treeOldOid = repo.ObjectDatabase.CreateTree(td).Id;
+
+                td = new TreeDefinition()
+                    .Add("A.TXT", newContent, Mode.NonExecutableFile)
+                    .Add("a.txt", newContent, Mode.NonExecutableFile);
+
+                treeNewOid = repo.ObjectDatabase.CreateTree(td).Id;
+            }
+
+            using (var repo = new Repository(repoPath))
+            {
+                using (var changes = repo.Diff.Compare<Patch>(repo.Lookup<Tree>(treeOldOid), repo.Lookup<Tree>(treeNewOid)))
+                {
+                    foreach (var entry in changes)
+                    {
+                        Assert.Single(entry.AddedLines);
+                        Assert.Single(entry.DeletedLines);
+                    }
                 }
             }
         }

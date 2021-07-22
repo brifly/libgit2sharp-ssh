@@ -84,6 +84,25 @@ namespace LibGit2Sharp.Tests
             }
         }
 
+
+        [Theory]
+        [InlineData("modified_staged_file.txt", FileStatus.ModifiedInWorkdir)]
+        [InlineData("new_tracked_file.txt", FileStatus.NewInWorkdir)]
+        [InlineData("deleted_staged_file.txt", FileStatus.DeletedFromWorkdir)]
+        public void UnstagingWritesIndex(string relativePath, FileStatus expectedStatus)
+        {
+            string path = SandboxStandardTestRepo();
+            using (var repo = new Repository(path))
+            {
+                Commands.Unstage(repo, relativePath);
+            }
+
+            using (var repo = new Repository(path))
+            {
+                Assert.Equal(expectedStatus, repo.RetrieveStatus(relativePath));
+            }
+        }
+
         [Theory]
         [InlineData("new_untracked_file.txt", FileStatus.NewInWorkdir)]
         [InlineData("where-am-I.txt", FileStatus.Nonexistent)]
@@ -106,7 +125,8 @@ namespace LibGit2Sharp.Tests
             {
                 Assert.Equal(currentStatus, repo.RetrieveStatus(relativePath));
 
-                Assert.DoesNotThrow(() => Commands.Unstage(repo, relativePath, new ExplicitPathsOptions() { ShouldFailOnUnmatchedPath = false }));
+                Commands.Unstage(repo, relativePath, new ExplicitPathsOptions() { ShouldFailOnUnmatchedPath = false });
+
                 Assert.Equal(currentStatus, repo.RetrieveStatus(relativePath));
             }
         }
@@ -147,8 +167,8 @@ namespace LibGit2Sharp.Tests
 
                 Commands.Unstage(repo, relativePath);
                 RepositoryStatus status = repo.RetrieveStatus();
-                Assert.Equal(0, status.Staged.Count());
-                Assert.Equal(1, status.Untracked.Count());
+                Assert.Empty(status.Staged);
+                Assert.Single(status.Untracked);
 
                 Assert.Throws<UnmatchedPathException>(() => Commands.Unstage(repo, "i-dont-exist", new ExplicitPathsOptions()));
             }
@@ -182,8 +202,9 @@ namespace LibGit2Sharp.Tests
 
                 Assert.Equal(currentStatus, repo.RetrieveStatus(relativePath));
 
-                Assert.DoesNotThrow(() => Commands.Unstage(repo, relativePath));
-                Assert.DoesNotThrow(() => Commands.Unstage(repo, relativePath, new ExplicitPathsOptions { ShouldFailOnUnmatchedPath = false }));
+                Commands.Unstage(repo, relativePath);
+                Commands.Unstage(repo, relativePath, new ExplicitPathsOptions { ShouldFailOnUnmatchedPath = false });
+
                 Assert.Equal(currentStatus, repo.RetrieveStatus(relativePath));
             }
         }
@@ -243,14 +264,14 @@ namespace LibGit2Sharp.Tests
                 Commands.Move(repo, "branch_file.txt", "renamed_branch_file.txt");
 
                 RepositoryStatus oldStatus = repo.RetrieveStatus();
-                Assert.Equal(1, oldStatus.RenamedInIndex.Count());
+                Assert.Single(oldStatus.RenamedInIndex);
                 Assert.Equal(FileStatus.Nonexistent, oldStatus["branch_file.txt"].State);
                 Assert.Equal(FileStatus.RenamedInIndex, oldStatus["renamed_branch_file.txt"].State);
 
                 Commands.Unstage(repo, new string[] { "branch_file.txt" });
 
                 RepositoryStatus newStatus = repo.RetrieveStatus();
-                Assert.Equal(0, newStatus.RenamedInIndex.Count());
+                Assert.Empty(newStatus.RenamedInIndex);
                 Assert.Equal(FileStatus.DeletedFromWorkdir, newStatus["branch_file.txt"].State);
                 Assert.Equal(FileStatus.NewInIndex, newStatus["renamed_branch_file.txt"].State);
             }
@@ -264,13 +285,13 @@ namespace LibGit2Sharp.Tests
                 Commands.Move(repo, "branch_file.txt", "renamed_branch_file.txt");
 
                 RepositoryStatus oldStatus = repo.RetrieveStatus();
-                Assert.Equal(1, oldStatus.RenamedInIndex.Count());
+                Assert.Single(oldStatus.RenamedInIndex);
                 Assert.Equal(FileStatus.RenamedInIndex, oldStatus["renamed_branch_file.txt"].State);
 
                 Commands.Unstage(repo, new string[] { "renamed_branch_file.txt" });
 
                 RepositoryStatus newStatus = repo.RetrieveStatus();
-                Assert.Equal(0, newStatus.RenamedInIndex.Count());
+                Assert.Empty(newStatus.RenamedInIndex);
                 Assert.Equal(FileStatus.NewInWorkdir, newStatus["renamed_branch_file.txt"].State);
                 Assert.Equal(FileStatus.DeletedFromIndex, newStatus["branch_file.txt"].State);
             }

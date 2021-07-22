@@ -1,7 +1,7 @@
 ﻿// This activates a lightweight mode which will help put under the light
 // incorrectly released handles by outputing a warning message in the console.
 //
-// This should be activated when tests are being run of the CI server.
+// This should be activated when tests are being run on the CI server.
 //
 // Uncomment the line below or add a conditional symbol to activate this mode
 
@@ -106,6 +106,7 @@ namespace LibGit2Sharp.Core.Handles
 #if LEAKS_TRACKING
             id = Guid.NewGuid();
             Trace.WriteLine(string.Format(CultureInfo.InvariantCulture, "Allocating {0} handle ({1})", GetType().Name, id));
+
             trace = new StackTrace(2, true).ToString();
 #endif
         }
@@ -137,7 +138,7 @@ namespace LibGit2Sharp.Core.Handles
 
         void Dispose(bool disposing)
         {
-            #if LEAKS_IDENTIFYING
+#if LEAKS_IDENTIFYING
             bool leaked = !disposing && ptr != null;
 
             if (leaked)

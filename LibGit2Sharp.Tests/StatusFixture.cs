@@ -255,20 +255,20 @@ namespace LibGit2Sharp.Tests
             {
                 RepositoryStatus status = repo.RetrieveStatus(new StatusOptions() { IncludeUnaltered = includeUnaltered });
                 Assert.NotNull(status);
-                Assert.Equal(0, status.Count());
+                Assert.Empty(status);
                 Assert.False(status.IsDirty);
 
-                Assert.Equal(0, status.Untracked.Count());
-                Assert.Equal(0, status.Modified.Count());
-                Assert.Equal(0, status.Missing.Count());
-                Assert.Equal(0, status.Added.Count());
-                Assert.Equal(0, status.Staged.Count());
-                Assert.Equal(0, status.Removed.Count());
+                Assert.Empty(status.Untracked);
+                Assert.Empty(status.Modified);
+                Assert.Empty(status.Missing);
+                Assert.Empty(status.Added);
+                Assert.Empty(status.Staged);
+                Assert.Empty(status.Removed);
             }
         }
 
         [Fact]
-        public void RetrievingTheStatusOfARepositoryReturnNativeFilePaths()
+        public void RetrievingTheStatusOfARepositoryReturnsGitPaths()
         {
             // Build relative path
             string relFilePath = Path.Combine("directory", "Testfile.txt");
@@ -286,10 +286,10 @@ namespace LibGit2Sharp.Tests
                 // Get the repository status
                 RepositoryStatus repoStatus = repo.RetrieveStatus();
 
-                Assert.Equal(1, repoStatus.Count());
+                Assert.Single(repoStatus);
                 StatusEntry statusEntry = repoStatus.Single();
 
-                Assert.Equal(relFilePath, statusEntry.FilePath);
+                Assert.Equal(relFilePath.Replace('\\', '/'), statusEntry.FilePath);
 
                 Assert.Equal(statusEntry.FilePath, repoStatus.Added.Select(s => s.FilePath).Single());
             }
@@ -310,7 +310,7 @@ namespace LibGit2Sharp.Tests
 
                 Touch(repo.Info.WorkingDirectory, ".gitignore", "*.txt" + Environment.NewLine);
 
-                RepositoryStatus newStatus = repo.RetrieveStatus();
+                RepositoryStatus newStatus = repo.RetrieveStatus(new StatusOptions { IncludeIgnored = true });
                 Assert.Equal(".gitignore", newStatus.Untracked.Select(s => s.FilePath).Single());
 
                 Assert.Equal(FileStatus.Ignored, repo.RetrieveStatus(relativePath));
@@ -383,6 +383,7 @@ namespace LibGit2Sharp.Tests
 
                 RepositoryStatus status = repo.RetrieveStatus();
 
+                relativePath = relativePath.Replace('\\', '/');
                 Assert.Equal(new[] { relativePath, "new_untracked_file.txt" }, status.Untracked.Select(s => s.FilePath));
 
                 Touch(repo.Info.WorkingDirectory, ".gitignore", "*.txt" + Environment.NewLine);
@@ -422,7 +423,7 @@ namespace LibGit2Sharp.Tests
                  * #       new_untracked_file.txt
                  */
 
-                RepositoryStatus newStatus = repo.RetrieveStatus();
+                RepositoryStatus newStatus = repo.RetrieveStatus(new StatusOptions { IncludeIgnored = true });
                 Assert.Equal(".gitignore", newStatus.Untracked.Select(s => s.FilePath).Single());
 
                 Assert.Equal(FileStatus.Ignored, repo.RetrieveStatus(relativePath));
@@ -435,12 +436,12 @@ namespace LibGit2Sharp.Tests
         [InlineData(false, FileStatus.DeletedFromWorkdir, FileStatus.NewInWorkdir)]
         public void RetrievingTheStatusOfAFilePathHonorsTheIgnoreCaseConfigurationSetting(
             bool shouldIgnoreCase,
-            FileStatus expectedlowerCasedFileStatus,
-            FileStatus expectedCamelCasedFileStatus
+            FileStatus expectedLowercaseFileStatus,
+            FileStatus expectedUppercaseFileStatus
             )
         {
-            string lowerCasedPath;
-            const string lowercasedFilename = "plop";
+            string lowercasePath;
+            const string lowercaseFileName = "plop";
 
             string repoPath = InitNewRepository();
 
@@ -448,24 +449,28 @@ namespace LibGit2Sharp.Tests
             {
                 repo.Config.Set("core.ignorecase", shouldIgnoreCase);
 
-                lowerCasedPath = Touch(repo.Info.WorkingDirectory, lowercasedFilename);
+                lowercasePath = Touch(repo.Info.WorkingDirectory, lowercaseFileName);
 
-                Commands.Stage(repo, lowercasedFilename);
+                Commands.Stage(repo, lowercaseFileName);
                 repo.Commit("initial", Constants.Signature, Constants.Signature);
             }
 
             using (var repo = new Repository(repoPath))
             {
-                const string upercasedFilename = "Plop";
+                const string uppercaseFileName = "PLOP";
 
-                string camelCasedPath = Path.Combine(repo.Info.WorkingDirectory, upercasedFilename);
-                File.Move(lowerCasedPath, camelCasedPath);
+                string uppercasePath = Path.Combine(repo.Info.WorkingDirectory, uppercaseFileName);
 
-                Assert.Equal(expectedlowerCasedFileStatus, repo.RetrieveStatus(lowercasedFilename));
-                Assert.Equal(expectedCamelCasedFileStatus, repo.RetrieveStatus(upercasedFilename));
+                //Workaround for problem with .NET Core 1.x on macOS where going directly from lowercasePath to uppercasePath fails
+                //https://github.com/dotnet/corefx/issues/18521
+                File.Move(lowercasePath, "__tmp__");
+                File.Move("__tmp__", uppercasePath);
 
-                AssertStatus(shouldIgnoreCase, expectedlowerCasedFileStatus, repo, camelCasedPath.ToLowerInvariant());
-                AssertStatus(shouldIgnoreCase, expectedCamelCasedFileStatus, repo, camelCasedPath.ToUpperInvariant());
+                Assert.Equal(expectedLowercaseFileStatus, repo.RetrieveStatus(lowercaseFileName));
+                Assert.Equal(expectedUppercaseFileStatus, repo.RetrieveStatus(uppercaseFileName));
+
+                AssertStatus(shouldIgnoreCase, expectedLowercaseFileStatus, repo, uppercasePath.ToLowerInvariant());
+                AssertStatus(shouldIgnoreCase, expectedUppercaseFileStatus, repo, uppercasePath.ToUpperInvariant());
             }
         }
 
@@ -484,8 +489,6 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void RetrievingTheStatusOfTheRepositoryHonorsTheGitIgnoreDirectivesThroughoutDirectories()
         {
-            char dirSep = Path.DirectorySeparatorChar;
-
             string path = SandboxStandardTestRepo();
             using (var repo = new Repository(path))
             {
@@ -498,8 +501,8 @@ namespace LibGit2Sharp.Tests
                 Assert.Equal(FileStatus.Ignored, repo.RetrieveStatus("bin/look-ma.txt"));
                 Assert.Equal(FileStatus.Ignored, repo.RetrieveStatus("bin/what-about-me.txt"));
 
-                RepositoryStatus newStatus = repo.RetrieveStatus();
-                Assert.Equal(new[] { "bin" + dirSep }, newStatus.Ignored.Select(s => s.FilePath));
+                RepositoryStatus newStatus = repo.RetrieveStatus(new StatusOptions { IncludeIgnored = true });
+                Assert.Equal(new[] { "bin/" }, newStatus.Ignored.Select(s => s.FilePath));
 
                 var sb = new StringBuilder();
                 sb.AppendLine("bin/*");
@@ -509,10 +512,10 @@ namespace LibGit2Sharp.Tests
                 Assert.Equal(FileStatus.Ignored, repo.RetrieveStatus("bin/look-ma.txt"));
                 Assert.Equal(FileStatus.NewInWorkdir, repo.RetrieveStatus("bin/what-about-me.txt"));
 
-                newStatus = repo.RetrieveStatus();
+                newStatus = repo.RetrieveStatus(new StatusOptions { IncludeIgnored = true });
 
-                Assert.Equal(new[] { "bin" + dirSep + "look-ma.txt" }, newStatus.Ignored.Select(s => s.FilePath));
-                Assert.True(newStatus.Untracked.Select(s => s.FilePath).Contains("bin" + dirSep + "what-about-me.txt"));
+                Assert.Equal(new[] { "bin/look-ma.txt" }, newStatus.Ignored.Select(s => s.FilePath));
+                Assert.Contains("bin/what-about-me.txt", newStatus.Untracked.Select(s => s.FilePath));
             }
         }
 
@@ -568,8 +571,8 @@ namespace LibGit2Sharp.Tests
                 Assert.Equal(2, status.Untracked.Count());
 
                 status = repo.RetrieveStatus(new StatusOptions() { PathSpec = new[] { "just_a_dir/another_dir" } });
-                Assert.Equal(1, status.Count());
-                Assert.Equal(1, status.Untracked.Count());
+                Assert.Single(status);
+                Assert.Single(status.Untracked);
             }
         }
 
@@ -626,7 +629,7 @@ namespace LibGit2Sharp.Tests
             var path = SandboxStandardTestRepo();
             string[] unalteredPaths = {
                 "1.txt",
-                "1" + Path.DirectorySeparatorChar + "branch_file.txt",
+                "1/branch_file.txt",
                 "branch_file.txt",
                 "new.txt",
                 "README",
@@ -637,7 +640,7 @@ namespace LibGit2Sharp.Tests
                 RepositoryStatus status = repo.RetrieveStatus(new StatusOptions() { IncludeUnaltered = true });
 
                 Assert.Equal(unalteredPaths.Length, status.Unaltered.Count());
-                Assert.Equal(unalteredPaths, status.Unaltered.OrderBy(s => s.FilePath).Select(s => s.FilePath).ToArray());
+                Assert.Equal(unalteredPaths, status.Unaltered.OrderBy(s => s.FilePath, StringComparer.OrdinalIgnoreCase).Select(s => s.FilePath).ToArray());
             }
         }
 
@@ -653,7 +656,7 @@ namespace LibGit2Sharp.Tests
 
                 RepositoryStatus status = repo.RetrieveStatus(new StatusOptions() { IncludeUnaltered = true });
 
-                Assert.Equal(false, status.IsDirty);
+                Assert.False(status.IsDirty);
                 Assert.Equal(9, status.Count());
             }
         }

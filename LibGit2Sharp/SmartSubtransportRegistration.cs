@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Handles;
@@ -10,7 +11,7 @@ namespace LibGit2Sharp
     /// under a particular scheme (eg "http").
     /// </summary>
     /// <typeparam name="T">The type of SmartSubtransport to register</typeparam>
-    public sealed class SmartSubtransportRegistration<T>
+    public sealed class SmartSubtransportRegistration<T> : SmartSubtransportRegistrationData
         where T : SmartSubtransport, new()
     {
         /// <summary>
@@ -24,15 +25,6 @@ namespace LibGit2Sharp
             RegistrationPointer = CreateRegistrationPointer();
             FunctionPointer = CreateFunctionPointer();
         }
-
-        /// <summary>
-        /// The URI scheme (eg "http") for this transport.
-        /// </summary>
-        public string Scheme { get; private set; }
-
-        internal IntPtr RegistrationPointer { get; private set; }
-
-        internal IntPtr FunctionPointer { get; private set; }
 
         private IntPtr CreateRegistrationPointer()
         {
@@ -84,7 +76,7 @@ namespace LibGit2Sharp
                 }
                 catch (Exception ex)
                 {
-                    Proxy.giterr_set_str(GitErrorCategory.Net, ex);
+                    Proxy.git_error_set_str(GitErrorCategory.Net, ex);
                 }
 
                 return (int)GitErrorCode.Error;
@@ -103,7 +95,7 @@ namespace LibGit2Sharp
                 }
                 catch (Exception ex)
                 {
-                    Proxy.giterr_set_str(GitErrorCategory.Net, ex);
+                    Proxy.git_error_set_str(GitErrorCategory.Net, ex);
                 }
 
                 return (int)GitErrorCode.Error;
